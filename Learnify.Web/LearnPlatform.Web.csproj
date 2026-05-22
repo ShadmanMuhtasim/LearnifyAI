@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
-    <ProjectReference Include="..\LearnPlatform.Application\LearnPlatform.Application.csproj" />
-    <ProjectReference Include="..\LearnPlatform.Infrastructure\LearnPlatform.Infrastructure.csproj" />
+    <ProjectReference Include="..\Learnify.Application\Learnify.Application.csproj" />
+    <ProjectReference Include="..\Learnify.Infrastructure\Learnify.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.0">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
