@@ -1,6 +1,6 @@
 using System.Linq.Expressions;
 
-namespace LearnPlatform.Core.Interfaces;
+namespace Learnify.Core.Interfaces;
 
 /// <summary>
 /// Generic repository interface defining common CRUD operations for any entity.

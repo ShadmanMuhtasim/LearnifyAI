@@ -1,9 +1,9 @@
-using LearnPlatform.Core.Entities;
-using LearnPlatform.Core.Interfaces;
-using LearnPlatform.Infrastructure.Data;
+using Learnify.Core.Entities;
+using Learnify.Core.Interfaces;
+using Learnify.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
-namespace LearnPlatform.Infrastructure.Repositories;
+namespace Learnify.Infrastructure.Repositories;
 
 /// <summary>
 /// Entity Framework Core implementation of the Course repository.

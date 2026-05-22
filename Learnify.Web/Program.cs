@@ -1,10 +1,10 @@
-using LearnPlatform.Application.Profiles;
-using LearnPlatform.Core.Interfaces;
-using LearnPlatform.Infrastructure.Data;
-using LearnPlatform.Infrastructure.Repositories;
-using LearnPlatform.Infrastructure.UnitOfWork;
-using LearnPlatform.Web.Middleware;
-using LearnPlatform.Web.Validators;
+using Learnify.Application.Profiles;
+using Learnify.Core.Interfaces;
+using Learnify.Infrastructure.Data;
+using Learnify.Infrastructure.Repositories;
+using Learnify.Infrastructure.UnitOfWork;
+using Learnify.Web.Middleware;
+using Learnify.Web.Validators;
 using Microsoft.EntityFrameworkCore;
 using FluentValidation;
 

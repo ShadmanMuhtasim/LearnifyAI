@@ -1,11 +1,11 @@
 using AutoMapper;
-using LearnPlatform.Application;
-using LearnPlatform.Application.DTOs;
-using LearnPlatform.Core.Entities;
-using LearnPlatform.Core.Interfaces;
+using Learnify.Application;
+using Learnify.Application.DTOs;
+using Learnify.Core.Entities;
+using Learnify.Core.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
-namespace LearnPlatform.Web.Controllers;
+namespace Learnify.Web.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]

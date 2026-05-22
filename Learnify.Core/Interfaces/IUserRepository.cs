@@ -1,6 +1,6 @@
-using LearnPlatform.Core.Entities;
+using Learnify.Core.Entities;
 
-namespace LearnPlatform.Core.Interfaces;
+namespace Learnify.Core.Interfaces;
 
 /// <summary>
 /// User-specific repository interface extending the generic repository.

@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text.Json;
 
-namespace LearnPlatform.Web.Middleware;
+namespace Learnify.Web.Middleware;
 
 /// <summary>
 /// Global exception middleware that catches unhandled exceptions and returns consistent error responses.

@@ -1,8 +1,8 @@
-using LearnPlatform.Core.Interfaces;
-using LearnPlatform.Infrastructure.Data;
-using LearnPlatform.Infrastructure.Repositories;
+using Learnify.Core.Interfaces;
+using Learnify.Infrastructure.Data;
+using Learnify.Infrastructure.Repositories;
 
-namespace LearnPlatform.Infrastructure.UnitOfWork;
+namespace Learnify.Infrastructure.UnitOfWork;
 
 /// <summary>
 /// Unit of Work implementation that coordinates repositories and manages database transactions.

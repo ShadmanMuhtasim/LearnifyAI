@@ -1,4 +1,4 @@
-namespace LearnPlatform.Core.Entities;
+namespace Learnify.Core.Entities;
 
 /// <summary>
 /// Course entity representing educational courses created by instructors.

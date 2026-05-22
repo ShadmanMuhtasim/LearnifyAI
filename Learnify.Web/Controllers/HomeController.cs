@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
-using LearnPlatform.Web.Models;
+using Learnify.Web.Models;
 
-namespace LearnPlatform.Web.Controllers;
+namespace Learnify.Web.Controllers;
 
 public class HomeController : Controller
 {

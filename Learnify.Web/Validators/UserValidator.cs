@@ -1,7 +1,7 @@
 using FluentValidation;
-using LearnPlatform.Application.DTOs;
+using Learnify.Application.DTOs;
 
-namespace LearnPlatform.Web.Validators;
+namespace Learnify.Web.Validators;
 
 /// <summary>
 /// FluentValidation validator for CreateUserDTO.

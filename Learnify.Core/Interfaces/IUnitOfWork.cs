@@ -1,6 +1,6 @@
-using LearnPlatform.Core.Entities;
+using Learnify.Core.Entities;
 
-namespace LearnPlatform.Core.Interfaces;
+namespace Learnify.Core.Interfaces;
 
 /// <summary>
 /// Unit of Work interface that coordinates repositories and manages transactions.

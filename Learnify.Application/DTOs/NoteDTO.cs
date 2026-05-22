@@ -1,4 +1,4 @@
-namespace LearnPlatform.Application.DTOs;
+namespace Learnify.Application.DTOs;
 
 /// <summary>
 /// Data transfer object for Note entity.

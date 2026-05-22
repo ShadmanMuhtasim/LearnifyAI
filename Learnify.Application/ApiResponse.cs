@@ -1,4 +1,4 @@
-namespace LearnPlatform.Application;
+namespace Learnify.Application;
 
 /// <summary>
 /// Generic API response envelope for consistent response formatting.

@@ -1,4 +1,4 @@
-namespace LearnPlatform.Core.Entities;
+namespace Learnify.Core.Entities;
 
 /// <summary>
 /// Base entity class providing common properties for all entities.

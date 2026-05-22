@@ -1,4 +1,4 @@
-namespace LearnPlatform.Core.Entities;
+namespace Learnify.Core.Entities;
 
 /// <summary>
 /// Note entity representing user notes taken on courses.

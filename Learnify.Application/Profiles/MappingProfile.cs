@@ -1,8 +1,8 @@
 using AutoMapper;
-using LearnPlatform.Application.DTOs;
-using LearnPlatform.Core.Entities;
+using Learnify.Application.DTOs;
+using Learnify.Core.Entities;
 
-namespace LearnPlatform.Application.Profiles;
+namespace Learnify.Application.Profiles;
 
 /// <summary>
 /// AutoMapper profile that defines entity-to-DTO mapping configurations.

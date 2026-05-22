@@ -1,9 +1,9 @@
 using System.Linq.Expressions;
-using LearnPlatform.Core.Interfaces;
-using LearnPlatform.Infrastructure.Data;
+using Learnify.Core.Interfaces;
+using Learnify.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
-namespace LearnPlatform.Infrastructure.Repositories;
+namespace Learnify.Infrastructure.Repositories;
 
 /// <summary>
 /// Entity Framework Core implementation of the generic repository pattern.

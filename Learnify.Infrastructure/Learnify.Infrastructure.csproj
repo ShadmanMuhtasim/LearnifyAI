@@ -1,8 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\LearnPlatform.Core\LearnPlatform.Core.csproj" />
-    <ProjectReference Include="..\LearnPlatform.Application\LearnPlatform.Application.csproj" />
+    <ProjectReference Include="..\Learnify.Core\Learnify.Core.csproj" />
+    <ProjectReference Include="..\Learnify.Application\Learnify.Application.csproj" />
   </ItemGroup>
 
   <ItemGroup>

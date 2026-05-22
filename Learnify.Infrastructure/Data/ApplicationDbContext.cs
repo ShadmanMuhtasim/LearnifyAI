@@ -1,7 +1,7 @@
-using LearnPlatform.Core.Entities;
+using Learnify.Core.Entities;
 using Microsoft.EntityFrameworkCore;
 
-namespace LearnPlatform.Infrastructure.Data;
+namespace Learnify.Infrastructure.Data;
 
 /// <summary>
 /// Application database context for managing database access and entity relationships.
