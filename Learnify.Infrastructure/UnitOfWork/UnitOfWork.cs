@@ -14,6 +14,7 @@ public class UnitOfWork : IUnitOfWork
     private IUserRepository? _users;
     private ICourseRepository? _courses;
     private INoteRepository? _notes;
+    private ILessonRepository? _lessons;
     private bool _disposed = false;
 
     public UnitOfWork(ApplicationDbContext context)
@@ -26,6 +27,8 @@ public class UnitOfWork : IUnitOfWork
     public ICourseRepository Courses => _courses ??= new CourseRepository(_context);
 
     public INoteRepository Notes => _notes ??= new NoteRepository(_context);
+
+    public ILessonRepository Lessons => _lessons ??= new LessonRepository(_context);
 
     public async Task<int> SaveChangesAsync()
     {

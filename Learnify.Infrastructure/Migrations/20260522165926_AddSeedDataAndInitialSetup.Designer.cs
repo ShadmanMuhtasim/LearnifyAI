@@ -4,6 +4,7 @@ using Learnify.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Learnify.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260522165926_AddSeedDataAndInitialSetup")]
+    partial class AddSeedDataAndInitialSetup
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -55,61 +58,28 @@ namespace Learnify.Infrastructure.Migrations
                     b.HasData(
                         new
                         {
-                            Id = new Guid("8f0f0aa2-b920-4880-bbfd-9e14351a0727"),
+                            Id = new Guid("ef527b4f-364d-45a5-b878-70bb97198bc4"),
                             CreatedAt = new DateTime(2026, 2, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Deep dive into advanced C# features including async/await, reflection, expression trees, and performance optimization techniques.",
                             Title = "Advanced C# Programming",
-                            UserId = new Guid("b135b12a-f7a7-45b7-8de2-1acd495220c6")
+                            UserId = new Guid("20d24c65-7736-4fe2-bfc8-013420dde884")
                         },
                         new
                         {
-                            Id = new Guid("524f1e38-3c5e-4bc6-aee4-ecf81edbf4f6"),
+                            Id = new Guid("2d1e8ccd-52a3-4b92-a4d2-98dcc0057f4d"),
                             CreatedAt = new DateTime(2026, 2, 15, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Build robust and scalable RESTful APIs using ASP.NET Core, including authentication, middleware, and best practices.",
                             Title = "ASP.NET Core Web API Development",
-                            UserId = new Guid("b135b12a-f7a7-45b7-8de2-1acd495220c6")
+                            UserId = new Guid("20d24c65-7736-4fe2-bfc8-013420dde884")
                         },
                         new
                         {
-                            Id = new Guid("cac7a130-eb8c-4a30-b635-57254fd61e37"),
+                            Id = new Guid("a423eafe-288d-445e-87f1-2f5a2a3e9fa4"),
                             CreatedAt = new DateTime(2026, 3, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Description = "Master EF Core including migrations, relationships, query tracking, change tracking, and performance tuning for enterprise applications.",
                             Title = "Entity Framework Core Masterclass",
-                            UserId = new Guid("b135b12a-f7a7-45b7-8de2-1acd495220c6")
+                            UserId = new Guid("20d24c65-7736-4fe2-bfc8-013420dde884")
                         });
-                });
-
-            modelBuilder.Entity("Learnify.Core.Entities.Lesson", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Content")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid>("CourseId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("datetime2")
-                        .HasDefaultValueSql("GETUTCDATE()");
-
-                    b.Property<int>("Order")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("nvarchar(300)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CourseId");
-
-                    b.ToTable("Lessons");
                 });
 
             modelBuilder.Entity("Learnify.Core.Entities.Note", b =>
@@ -139,23 +109,23 @@ namespace Learnify.Infrastructure.Migrations
                     b.HasData(
                         new
                         {
-                            Id = new Guid("7563c5ce-9399-406c-8c0f-152dd7c8fc32"),
+                            Id = new Guid("fc2b412a-b9a3-49dc-8798-97cb6ebef306"),
                             Content = "Key takeaway: Use 'await' consistently and avoid .Result to prevent deadlocks. Always prefer async all the way down.",
-                            CourseId = new Guid("8f0f0aa2-b920-4880-bbfd-9e14351a0727"),
+                            CourseId = new Guid("ef527b4f-364d-45a5-b878-70bb97198bc4"),
                             CreatedAt = new DateTime(2026, 3, 10, 0, 0, 0, 0, DateTimeKind.Utc)
                         },
                         new
                         {
-                            Id = new Guid("1e026033-e091-4a89-84b0-1bc7be4e00d9"),
+                            Id = new Guid("6b72b044-8622-4436-8135-720597afd2c1"),
                             Content = "Remember: API versioning is critical for enterprise apps. Consider URL path versioning for simplicity and HTTP header versioning for flexibility.",
-                            CourseId = new Guid("524f1e38-3c5e-4bc6-aee4-ecf81edbf4f6"),
+                            CourseId = new Guid("2d1e8ccd-52a3-4b92-a4d2-98dcc0057f4d"),
                             CreatedAt = new DateTime(2026, 3, 20, 0, 0, 0, 0, DateTimeKind.Utc)
                         },
                         new
                         {
-                            Id = new Guid("1bb47140-e4b3-4009-9d3f-8be52837372a"),
+                            Id = new Guid("da0ae5d7-38b8-4f20-8232-87ecf536da2d"),
                             Content = "EF Core Performance Tip: Use AsNoTracking() for read-only queries to avoid change tracker overhead. Profile with SQL Server Profiler.",
-                            CourseId = new Guid("cac7a130-eb8c-4a30-b635-57254fd61e37"),
+                            CourseId = new Guid("a423eafe-288d-445e-87f1-2f5a2a3e9fa4"),
                             CreatedAt = new DateTime(2026, 4, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         });
                 });
@@ -200,7 +170,7 @@ namespace Learnify.Infrastructure.Migrations
                     b.HasData(
                         new
                         {
-                            Id = new Guid("ab561e92-25f7-4b5c-9349-d19de15b18f8"),
+                            Id = new Guid("82d75414-5d9f-43d0-b74d-e9d8de54014b"),
                             CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Email = "shadman@learnify.com",
                             FullName = "Shadman Rahman",
@@ -209,7 +179,7 @@ namespace Learnify.Infrastructure.Migrations
                         },
                         new
                         {
-                            Id = new Guid("b135b12a-f7a7-45b7-8de2-1acd495220c6"),
+                            Id = new Guid("20d24c65-7736-4fe2-bfc8-013420dde884"),
                             CreatedAt = new DateTime(2026, 1, 5, 0, 0, 0, 0, DateTimeKind.Utc),
                             Email = "fatima@learnify.com",
                             FullName = "Fatima Akhtar",
@@ -218,7 +188,7 @@ namespace Learnify.Infrastructure.Migrations
                         },
                         new
                         {
-                            Id = new Guid("04a8e75c-d34a-4505-aacd-115d52ca5b00"),
+                            Id = new Guid("3fe733c7-8b17-46af-acf6-e5cea979ef3b"),
                             CreatedAt = new DateTime(2026, 1, 10, 0, 0, 0, 0, DateTimeKind.Utc),
                             Email = "arif@learnify.com",
                             FullName = "Arif Hossain",
@@ -236,17 +206,6 @@ namespace Learnify.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
-                });
-
-            modelBuilder.Entity("Learnify.Core.Entities.Lesson", b =>
-                {
-                    b.HasOne("Learnify.Core.Entities.Course", "Course")
-                        .WithMany()
-                        .HasForeignKey("CourseId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Course");
                 });
 
             modelBuilder.Entity("Learnify.Core.Entities.Note", b =>

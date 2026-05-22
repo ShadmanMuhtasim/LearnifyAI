@@ -1,6 +1,7 @@
 using AutoMapper;
 using Learnify.Application.DTOs;
 using Learnify.Core.Entities;
+using Learnify.Core.Interfaces;
 
 namespace Learnify.Application.Profiles;
 
@@ -52,6 +53,23 @@ public class MappingProfile : Profile
         CreateMap<CreateNoteDTO, Note>();
 
         CreateMap<UpdateNoteDTO, Note>()
+            .ForMember(dest => dest.Id, opt => opt.Ignore())
+            .ForMember(dest => dest.CourseId, opt => opt.Ignore())
+            .ForMember(dest => dest.CreatedAt, opt => opt.Ignore());
+
+        // Lesson mappings
+        CreateMap<Lesson, LessonDTO>()
+            .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
+            .ForMember(dest => dest.Title, opt => opt.MapFrom(src => src.Title))
+            .ForMember(dest => dest.Content, opt => opt.MapFrom(src => src.Content))
+            .ForMember(dest => dest.Order, opt => opt.MapFrom(src => src.Order))
+            .ForMember(dest => dest.CourseId, opt => opt.MapFrom(src => src.CourseId))
+            .ForMember(dest => dest.CourseTitle, opt => opt.MapFrom(src => src.Course.Title))
+            .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreatedAt));
+
+        CreateMap<CreateLessonDTO, Lesson>();
+
+        CreateMap<UpdateLessonDTO, Lesson>()
             .ForMember(dest => dest.Id, opt => opt.Ignore())
             .ForMember(dest => dest.CourseId, opt => opt.Ignore())
             .ForMember(dest => dest.CreatedAt, opt => opt.Ignore());

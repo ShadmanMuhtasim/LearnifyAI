@@ -24,6 +24,11 @@ public interface IUnitOfWork : IDisposable
     INoteRepository Notes { get; }
 
     /// <summary>
+    /// Gets the Lesson repository.
+    /// </summary>
+    ILessonRepository Lessons { get; }
+
+    /// <summary>
     /// Saves all pending changes to the database within a transaction.
     /// </summary>
     Task<int> SaveChangesAsync();
