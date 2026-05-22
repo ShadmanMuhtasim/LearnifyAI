@@ -3,12 +3,14 @@ using Learnify.Application;
 using Learnify.Application.DTOs;
 using Learnify.Core.Entities;
 using Learnify.Core.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Learnify.Web.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class UsersController : ControllerBase
 {
     private readonly IUnitOfWork _unitOfWork;

@@ -1,14 +1,18 @@
 namespace Learnify.Core.Entities;
 
 /// <summary>
-/// User entity representing students and instructors.
+/// User entity representing students and instructors with secure password storage.
 /// </summary>
 public class User : BaseEntity
 {
     public string FullName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
-    public string PasswordHash { get; set; } = string.Empty;
-    public string Role { get; set; } = string.Empty;
+    public byte[] PasswordHash { get; set; } = [];
+    public byte[] PasswordSalt { get; set; } = [];
+    public string Role { get; set; } = "Student"; // Student, Instructor, Admin
+    public bool IsActive { get; set; } = true;
+    public DateTime? LastLoginAt { get; set; }
 
-    public virtual ICollection<Course> Courses { get; set; } = new List<Course>();
+    public virtual ICollection<Course> CreatedCourses { get; set; } = new List<Course>();
+    public virtual ICollection<Note> Notes { get; set; } = new List<Note>();
 }

@@ -1,5 +1,6 @@
-using Learnify.Core.Entities;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Learnify.Infrastructure.Data;
 
@@ -33,7 +34,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
 
             // User has many Courses (1-to-many)
-            entity.HasMany(e => e.Courses)
+            entity.HasMany(e => e.CreatedCourses)
                   .WithOne(e => e.User)
                   .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
@@ -77,10 +78,26 @@ public class ApplicationDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // Seed Data
+        // Seed Data - Hash passwords using HMACSHA512
         var adminId = Guid.NewGuid();
         var instructorId = Guid.NewGuid();
         var studentId = Guid.NewGuid();
+
+        // Helper method to hash password
+        (byte[] hash, byte[] salt) HashPassword(string password)
+        {
+            using var hmac = new HMACSHA512();
+            var salt = hmac.Key;
+            var hashValue = hmac.ComputeHash(Encoding.UTF8.GetBytes(password));
+            return (hashValue, salt);
+        }
+
+        var adminPwd = "Admin@123";
+        var (adminHash, adminSalt) = HashPassword(adminPwd);
+        var instructorPwd = "Instructor@123";
+        var (instructorHash, instructorSalt) = HashPassword(instructorPwd);
+        var studentPwd = "Student@123";
+        var (studentHash, studentSalt) = HashPassword(studentPwd);
 
         modelBuilder.Entity<User>().HasData(
             new User
@@ -88,7 +105,8 @@ public class ApplicationDbContext : DbContext
                 Id = adminId,
                 FullName = "Shadman Rahman",
                 Email = "shadman@learnify.com",
-                PasswordHash = "Admin@123",
+                PasswordHash = adminHash,
+                PasswordSalt = adminSalt,
                 Role = "Admin",
                 CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
             },
@@ -97,7 +115,8 @@ public class ApplicationDbContext : DbContext
                 Id = instructorId,
                 FullName = "Fatima Akhtar",
                 Email = "fatima@learnify.com",
-                PasswordHash = "Instructor@123",
+                PasswordHash = instructorHash,
+                PasswordSalt = instructorSalt,
                 Role = "Instructor",
                 CreatedAt = new DateTime(2026, 1, 5, 0, 0, 0, DateTimeKind.Utc)
             },
@@ -106,7 +125,8 @@ public class ApplicationDbContext : DbContext
                 Id = studentId,
                 FullName = "Arif Hossain",
                 Email = "arif@learnify.com",
-                PasswordHash = "Student@123",
+                PasswordHash = studentHash,
+                PasswordSalt = studentSalt,
                 Role = "Student",
                 CreatedAt = new DateTime(2026, 1, 10, 0, 0, 0, DateTimeKind.Utc)
             }
