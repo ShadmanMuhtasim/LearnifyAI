@@ -2,7 +2,9 @@ using Learnify.Application.Config;
 using Learnify.Application.Interfaces;
 using Learnify.Application.Profiles;
 using Learnify.Application.Services;
+using Learnify.Application.Settings;
 using Learnify.Core.Interfaces;
+using Learnify.Infrastructure.AI;
 using Learnify.Infrastructure.Data;
 using Learnify.Infrastructure.Repositories;
 using Learnify.Infrastructure.Services;
@@ -12,6 +14,7 @@ using Learnify.Web.Validators;
 using Learnify.Web.Workers;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using FluentValidation;
 using System.Text;
@@ -93,6 +96,12 @@ builder.Services.AddSingleton<INotificationService, EmailNotificationService>();
 
 // Register Background Worker (HostedService)
 builder.Services.AddHostedService<NotificationWorker>();
+
+// Register Infrastructure layer (includes AI providers, factory, and service)
+builder.Services.AddInfrastructure(builder.Configuration);
+
+// Register Background Worker for AI Processing
+builder.Services.AddHostedService<AiProcessingWorker>();
 
 var app = builder.Build();
 

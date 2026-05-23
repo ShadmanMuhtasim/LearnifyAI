@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
+    <ProjectReference Include="..\Learnify.Core\Learnify.Core.csproj" />
     <ProjectReference Include="..\Learnify.Application\Learnify.Application.csproj" />
     <ProjectReference Include="..\Learnify.Infrastructure\Learnify.Infrastructure.csproj" />
   </ItemGroup>
