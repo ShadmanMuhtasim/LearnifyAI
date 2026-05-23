@@ -31,6 +31,9 @@ public class ApiResponse
     public bool Success { get; set; }
     public string? Message { get; set; }
 
+    public static ApiResponse Ok(object? data, string? message = null)
+        => new() { Success = true, Message = message };
+
     public static ApiResponse Ok(string? message = null)
         => new() { Success = true, Message = message };
 

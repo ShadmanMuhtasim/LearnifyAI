@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using System.Text;
+using Learnify.Core.Entities;
 
 namespace Learnify.Infrastructure.Data;
 

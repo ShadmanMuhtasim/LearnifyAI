@@ -5,9 +5,11 @@ using Learnify.Application.Services;
 using Learnify.Core.Interfaces;
 using Learnify.Infrastructure.Data;
 using Learnify.Infrastructure.Repositories;
+using Learnify.Infrastructure.Services;
 using Learnify.Infrastructure.UnitOfWork;
 using Learnify.Web.Middleware;
 using Learnify.Web.Validators;
+using Learnify.Web.Workers;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -16,8 +18,23 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Add CORS policy for frontend (Vite dev server on port 5173)
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("LearnifyPolicy", policy =>
+    {
+        policy.WithOrigins("http://localhost:5173")
+              .AllowAnyHeader()
+              .AllowCredentials();
+    });
+});
+
 // Add services to the container.
-builder.Services.AddControllersWithViews();
+builder.Services.AddControllersWithViews()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+    });
 
 // Register AutoMapper
 builder.Services.AddAutoMapper(typeof(MappingProfile));
@@ -71,6 +88,12 @@ builder.Services.AddAuthorization();
 // Register AuthService
 builder.Services.AddScoped<IAuthService, AuthService>();
 
+// Register Background Notification Service (scoped for queueing, singleton channel for shared queue)
+builder.Services.AddSingleton<INotificationService, EmailNotificationService>();
+
+// Register Background Worker (HostedService)
+builder.Services.AddHostedService<NotificationWorker>();
+
 var app = builder.Build();
 
 // Apply database migrations on startup
@@ -90,6 +113,8 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+
+app.UseCors("LearnifyPolicy");
 
 app.UseRouting();
 

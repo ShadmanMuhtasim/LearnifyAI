@@ -10,6 +10,7 @@ public class CourseDTO
     public string Description { get; set; } = string.Empty;
     public Guid UserId { get; set; }
     public string? InstructorName { get; set; }
+    public string? Category { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 }
