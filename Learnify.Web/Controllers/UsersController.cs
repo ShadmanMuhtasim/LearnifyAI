@@ -16,12 +16,14 @@ public class UsersController : ControllerBase
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
     private readonly ILogger<UsersController> _logger;
+    private readonly INotificationService _notificationService;
 
-    public UsersController(IUnitOfWork unitOfWork, IMapper mapper, ILogger<UsersController> logger)
+    public UsersController(IUnitOfWork unitOfWork, IMapper mapper, ILogger<UsersController> logger, INotificationService notificationService)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _logger = logger;
+        _notificationService = notificationService;
     }
 
     // GET: api/users
@@ -72,8 +74,27 @@ public class UsersController : ControllerBase
             await _unitOfWork.SaveChangesAsync();
 
             var userDto = _mapper.Map<UserDTO>(user);
+
+            // Queue a welcome email notification (fire-and-forget, async background processing)
+            await _notificationService.QueueNotificationAsync(new NotificationMessage
+            {
+                NotificationType = "WelcomeEmail",
+                Recipient = userDto.Email,
+                RecipientName = userDto.FullName,
+                Subject = "Welcome to Learnify!",
+                Body = $"<h1>Welcome, {userDto.FullName}!</h1><p>Your account has been created successfully. You can now log in and start learning.</p>",
+                Metadata = new Dictionary<string, string?>
+                {
+                    ["userId"] = userDto.Id.ToString(),
+                    ["role"] = userDto.Role
+                },
+                CreatedAt = DateTime.UtcNow
+            });
+
+            _logger.LogInformation("Welcome email queued for user '{Email}'.", userDto.Email);
+
             return CreatedAtAction(nameof(GetUser), new { id = userDto.Id },
-                ApiResponse<UserDTO>.Ok(userDto, "User created successfully."));
+                ApiResponse<UserDTO>.Ok(userDto, "User created successfully. Welcome email queued."));
         }
         catch (Exception ex)
         {
