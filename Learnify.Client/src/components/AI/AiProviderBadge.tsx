@@ -82,7 +82,7 @@ const AiProviderBadge: React.FC<AiProviderBadgeProps> = ({ onProviderChange }) =
       case 'gemini':
         return {
           icon: '✨',
-          label: 'Gemini',
+          label: 'Gemini 3.5 Flash',
           color: '#1e40af',
           bgColor: '#eff6ff',
           borderColor: '#93c5fd'
@@ -98,7 +98,7 @@ const AiProviderBadge: React.FC<AiProviderBadgeProps> = ({ onProviderChange }) =
       case 'ollama':
         return {
           icon: '🏠',
-          label: 'Ollama',
+          label: 'Ollama / Local LLaMA',
           color: '#7c2d12',
           bgColor: '#fff7ed',
           borderColor: '#fdba74'
@@ -123,6 +123,7 @@ const AiProviderBadge: React.FC<AiProviderBadgeProps> = ({ onProviderChange }) =
   };
 
   const config = getProviderConfig(provider.activeProvider);
+  const isLocalProvider = provider.activeProvider.toLowerCase() === 'ollama';
 
   return (
     <div style={{
@@ -146,6 +147,14 @@ const AiProviderBadge: React.FC<AiProviderBadgeProps> = ({ onProviderChange }) =
       }}>
         ({provider.model})
       </span>
+      {isLocalProvider && provider.baseUrl && (
+        <span style={{
+          opacity: 0.7,
+          fontWeight: 400
+        }}>
+          {provider.baseUrl}
+        </span>
+      )}
     </div>
   );
 };

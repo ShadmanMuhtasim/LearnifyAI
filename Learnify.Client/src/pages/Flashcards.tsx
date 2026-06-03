@@ -1,22 +1,24 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { generateFlashcards, summarizeNotes, generateRecommendations } from '../services/aiService';
+import { generateFlashcards, summarizeNote, getStudyTips } from '../services/aiService';
+import type { FlashcardItem } from '../services/aiService';
 import { toast } from 'react-hot-toast';
+import AiProviderSettings from '../components/AI/AiProviderSettings';
 
-interface Flashcard {
+interface LocalFlashcard {
   question: string;
   answer: string;
-  explanation?: string;
 }
 
 export default function Flashcards() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'generate' | 'summarize' | 'recommend'>('generate');
-  
+  const [activeTab, setActiveTab] = useState<'generate' | 'summarize' | 'tips'>('generate');
+  const [showSettings, setShowSettings] = useState(false);
+
   // Flashcard generation state
   const [flashcardContent, setFlashcardContent] = useState('');
   const [flashcardTitle, setFlashcardTitle] = useState('');
-  const [generatedFlashcards, setGeneratedFlashcards] = useState<Flashcard[]>([]);
+  const [generatedFlashcards, setGeneratedFlashcards] = useState<LocalFlashcard[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
@@ -26,11 +28,10 @@ export default function Flashcards() {
   const [summary, setSummary] = useState('');
   const [isSummarizing, setIsSummarizing] = useState(false);
 
-  // Recommendations state
-  const [recommendationCourseId, setRecommendationCourseId] = useState('');
-  const [recommendationCourseTitle, setRecommendationCourseTitle] = useState('');
-  const [recommendations, setRecommendations] = useState<string[]>([]);
-  const [isGeneratingRecommendations, setIsGeneratingRecommendations] = useState(false);
+  // Study tips state
+  const [tipsTopic, setTipsTopic] = useState('');
+  const [studyTips, setStudyTips] = useState('');
+  const [isGeneratingTips, setIsGeneratingTips] = useState(false);
 
   const handleGenerateFlashcards = async () => {
     if (!flashcardContent.trim()) {
@@ -40,11 +41,18 @@ export default function Flashcards() {
 
     setIsGenerating(true);
     try {
-      const result = await generateFlashcards(flashcardContent, flashcardTitle || undefined);
-      setGeneratedFlashcards(result);
+      const result = await generateFlashcards({
+        noteId: `temp-${Date.now()}`,
+        content: flashcardContent,
+      });
+      const cards: LocalFlashcard[] = result.flashcards.map((f: FlashcardItem) => ({
+        question: f.question,
+        answer: f.answer,
+      }));
+      setGeneratedFlashcards(cards);
       setCurrentCardIndex(0);
       setIsFlipped(false);
-      toast.success(`Generated ${result.length} flashcards!`);
+      toast.success(`Generated ${cards.length} flashcards!`);
     } catch {
       toast.error('Failed to generate flashcards. Please try again.');
     } finally {
@@ -60,8 +68,11 @@ export default function Flashcards() {
 
     setIsSummarizing(true);
     try {
-      const result = await summarizeNotes(notesText);
-      setSummary(result);
+      const result = await summarizeNote({
+        noteId: `temp-${Date.now()}`,
+        content: notesText,
+      });
+      setSummary(result.summary);
       toast.success('Notes summarized successfully!');
     } catch {
       toast.error('Failed to summarize notes. Please try again.');
@@ -70,31 +81,31 @@ export default function Flashcards() {
     }
   };
 
-  const handleGenerateRecommendations = async () => {
-    if (!recommendationCourseId.trim() || !recommendationCourseTitle.trim()) {
-      toast.error('Please enter both course ID and title');
+  const handleGenerateTips = async () => {
+    if (!tipsTopic.trim()) {
+      toast.error('Please enter a topic');
       return;
     }
 
-    setIsGeneratingRecommendations(true);
+    setIsGeneratingTips(true);
     try {
-      const result = await generateRecommendations(recommendationCourseId, recommendationCourseTitle);
-      setRecommendations(result);
-      toast.success(`Generated ${result.length} recommendations!`);
+      const result = await getStudyTips({ topic: tipsTopic });
+      setStudyTips(result.tips);
+      toast.success('Study tips generated successfully!');
     } catch {
-      toast.error('Failed to generate recommendations. Please try again.');
+      toast.error('Failed to generate study tips. Please try again.');
     } finally {
-      setIsGeneratingRecommendations(false);
+      setIsGeneratingTips(false);
     }
   };
 
   const flipCard = () => setIsFlipped(!isFlipped);
-  
+
   const nextCard = () => {
     setIsFlipped(false);
     setCurrentCardIndex(prev => Math.min(prev + 1, generatedFlashcards.length - 1));
   };
-  
+
   const prevCard = () => {
     setIsFlipped(false);
     setCurrentCardIndex(prev => Math.max(prev - 1, 0));
@@ -115,8 +126,21 @@ export default function Flashcards() {
             Back
           </button>
           <h1 className="text-3xl font-bold text-gray-900">AI Learning Tools</h1>
-          <div className="w-20"></div>
+          <button
+            type="button"
+            onClick={() => setShowSettings((current) => !current)}
+            className="px-4 py-2 rounded-md text-white font-medium shadow-sm"
+            style={{ background: 'linear-gradient(135deg, #6B46C1, #4299E1)' }}
+          >
+            {'⚙️ AI Provider Settings'}
+          </button>
         </div>
+
+        {showSettings && (
+          <div className="mb-8">
+            <AiProviderSettings />
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex gap-2 mb-8 bg-white rounded-lg p-1 shadow-sm">
@@ -141,14 +165,14 @@ export default function Flashcards() {
             Note Summarizer
           </button>
           <button
-            onClick={() => setActiveTab('recommend')}
+            onClick={() => setActiveTab('tips')}
             className={`flex-1 py-3 px-4 rounded-md font-medium transition-colors ${
-              activeTab === 'recommend'
+              activeTab === 'tips'
                 ? 'bg-blue-600 text-white'
                 : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
-            Recommendations
+            Study Tips
           </button>
         </div>
 
@@ -208,29 +232,32 @@ export default function Flashcards() {
                 <h3 className="text-lg font-semibold mb-4">
                   Generated Flashcards ({currentCardIndex + 1}/{generatedFlashcards.length})
                 </h3>
-                
+
                 <div className="flex justify-center mb-6">
                   <div
                     onClick={flipCard}
-                    className="w-full max-w-2xl min-h-[250px] cursor-pointer transition-transform duration-300 transform-style-3d relative"
+                    className="w-full max-w-2xl min-h-[250px] cursor-pointer transition-all duration-300 relative"
+                    style={{ perspective: '1000px' }}
                   >
-                    <div className={`w-full min-h-[250px] bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-8 border-2 border-blue-200 flex items-center justify-center transition-all duration-300 ${isFlipped ? 'rotate-y-180' : ''}`}>
-                      <div className="text-center">
-                        {isFlipped ? (
-                          <>
-                            <p className="text-sm text-gray-500 mb-2">Answer</p>
-                            <p className="text-lg font-medium text-gray-900">{generatedFlashcards[currentCardIndex].answer}</p>
-                            {generatedFlashcards[currentCardIndex].explanation && (
-                              <p className="text-sm text-gray-600 mt-4 italic">
-                                {generatedFlashcards[currentCardIndex].explanation}
-                              </p>
-                            )}
-                          </>
-                        ) : (
+                    <div
+                      className="w-full min-h-[250px] bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-8 border-2 border-blue-200 flex items-center justify-center transition-transform duration-500"
+                      style={{
+                        transformStyle: 'preserve-3d',
+                        transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+                      }}
+                    >
+                      <div className="text-center" style={{ transform: 'rotateY(isFlipped ? 180deg : 0deg)' }}>
+                        {!isFlipped ? (
                           <>
                             <p className="text-sm text-gray-500 mb-2">Question</p>
                             <p className="text-lg font-medium text-gray-900">{generatedFlashcards[currentCardIndex].question}</p>
                             <p className="text-sm text-gray-400 mt-4">Click to reveal answer</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm text-gray-500 mb-2">Answer</p>
+                            <p className="text-lg font-medium text-gray-900">{generatedFlashcards[currentCardIndex].answer}</p>
+                            <p className="text-sm text-gray-400 mt-4">Click to see question</p>
                           </>
                         )}
                       </div>
@@ -304,50 +331,36 @@ export default function Flashcards() {
             {summary && (
               <div className="bg-white rounded-lg shadow-sm p-6">
                 <h3 className="text-lg font-semibold mb-4">Summary</h3>
-                <div className="prose max-w-none">
-                  <p className="text-gray-700 whitespace-pre-wrap">{summary}</p>
-                </div>
+                <p className="text-gray-700 whitespace-pre-wrap">{summary}</p>
               </div>
             )}
           </div>
         )}
 
-        {/* Recommendations Tab */}
-        {activeTab === 'recommend' && (
+        {/* Study Tips Tab */}
+        {activeTab === 'tips' && (
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-xl font-semibold mb-4">Get Course Recommendations</h2>
+              <h2 className="text-xl font-semibold mb-4">Get AI Study Tips</h2>
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Course ID
+                    Topic
                   </label>
                   <input
                     type="text"
-                    value={recommendationCourseId}
-                    onChange={(e) => setRecommendationCourseId(e.target.value)}
-                    placeholder="e.g., course-123"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Course Title
-                  </label>
-                  <input
-                    type="text"
-                    value={recommendationCourseTitle}
-                    onChange={(e) => setRecommendationCourseTitle(e.target.value)}
-                    placeholder="e.g., Introduction to Computer Science"
+                    value={tipsTopic}
+                    onChange={(e) => setTipsTopic(e.target.value)}
+                    placeholder="e.g., Machine Learning, World War II, Organic Chemistry"
                     className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
                 <button
-                  onClick={handleGenerateRecommendations}
-                  disabled={isGeneratingRecommendations}
+                  onClick={handleGenerateTips}
+                  disabled={isGeneratingTips}
                   className="w-full bg-blue-600 text-white py-3 rounded-md font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  {isGeneratingRecommendations ? (
+                  {isGeneratingTips ? (
                     <span className="flex items-center justify-center gap-2">
                       <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
@@ -356,27 +369,16 @@ export default function Flashcards() {
                       Generating...
                     </span>
                   ) : (
-                    'Get Recommendations'
+                    'Get Study Tips'
                   )}
                 </button>
               </div>
             </div>
 
-            {recommendations.length > 0 && (
+            {studyTips && (
               <div className="bg-white rounded-lg shadow-sm p-6">
-                <h3 className="text-lg font-semibold mb-4">
-                  Recommended Resources ({recommendations.length})
-                </h3>
-                <ul className="space-y-3">
-                  {recommendations.map((rec, index) => (
-                    <li key={index} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                      <span className="flex-shrink-0 w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">
-                        {index + 1}
-                      </span>
-                      <span className="text-gray-700">{rec}</span>
-                    </li>
-                  ))}
-                </ul>
+                <h3 className="text-lg font-semibold mb-4">Study Tips for "{tipsTopic}"</h3>
+                <div className="text-gray-700 whitespace-pre-wrap">{studyTips}</div>
               </div>
             )}
           </div>

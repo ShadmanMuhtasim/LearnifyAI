@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { summarizeNote, type ActiveProviderResponse } from '../../services/aiService';
+import { useState, useCallback, useEffect } from 'react';
+import { summarizeNote, getActiveProvider, type ActiveProviderResponse } from '../../services/aiService';
 
 interface NoteSummarizerProps {
   noteId: string;
@@ -12,14 +12,16 @@ const NoteSummarizer: React.FC<NoteSummarizerProps> = ({ noteId, content }) => {
   const [error, setError] = useState<string | null>(null);
   const [activeProvider, setActiveProvider] = useState<ActiveProviderResponse | null>(null);
 
-  const fetchActiveProvider = useCallback(async () => {
-    try {
-      const { getActiveProvider } = await import('../../services/aiService');
-      const provider = await getActiveProvider();
-      setActiveProvider(provider);
-    } catch {
-      // Silently fail - provider info is optional
-    }
+  useEffect(() => {
+    const loadProvider = async () => {
+      try {
+        const provider = await getActiveProvider();
+        setActiveProvider(provider);
+      } catch {
+        // Silently fail - provider info is optional
+      }
+    };
+    loadProvider();
   }, []);
 
   const handleSummarize = useCallback(async () => {

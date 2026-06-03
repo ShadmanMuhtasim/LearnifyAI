@@ -35,4 +35,13 @@ public interface IAiService
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Bullet-point study tips as a formatted string.</returns>
     Task<string> GetStudyTipsAsync(string topic, CancellationToken ct = default);
+
+    /// <summary>
+    /// Analyzes an uploaded document and returns a structured note summary.
+    /// </summary>
+    /// <param name="content">Text or derived content sent to the AI provider.</param>
+    /// <param name="fileName">Original file name for context.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Structured note analysis metadata.</returns>
+    Task<NoteAnalysisResult> AnalyzeDocumentAsync(string content, string fileName, CancellationToken ct = default);
 }

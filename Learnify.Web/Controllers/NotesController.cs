@@ -1,0 +1,520 @@
+using AutoMapper;
+using Learnify.Application;
+using Learnify.Application.DTOs;
+using Learnify.Core.Entities;
+using Learnify.Core.Interfaces;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
+using System.Text;
+
+namespace Learnify.Web.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+[Authorize]
+public class NotesController : ControllerBase
+{
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IMapper _mapper;
+    private readonly ILogger<NotesController> _logger;
+
+    public NotesController(IUnitOfWork unitOfWork, IMapper mapper, ILogger<NotesController> logger)
+    {
+        _unitOfWork = unitOfWork;
+        _mapper = mapper;
+        _logger = logger;
+    }
+
+    private Guid GetUserId()
+        => Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!);
+
+    // GET: api/notes
+    [HttpGet]
+    public async Task<ActionResult<ApiResponse<IEnumerable<NoteDTO>>>> GetNotes()
+    {
+        try
+        {
+            var userId = GetUserId();
+            var notes = await _unitOfWork.Notes.FindByUserIdAsync(userId);
+            var noteList = notes.ToList();
+            var noteDtos = noteList.Select(note => new NoteDTO
+            {
+                Id = note.Id,
+                Content = note.Content,
+                CourseId = note.CourseId,
+                CourseTitle = note.Course?.Title,
+                Attachments = note.Attachments.Select(a => new NoteAttachmentDTO
+                {
+                    Id = a.Id,
+                    Name = a.Name,
+                    Type = a.Type,
+                    Base64 = a.Base64
+                }).ToList(),
+                CreatedAt = note.CreatedAt
+            }).ToList();
+
+            return Ok(ApiResponse<IEnumerable<NoteDTO>>.Ok(noteDtos, "Notes retrieved successfully."));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving notes.");
+            return StatusCode(500, ApiResponse<IEnumerable<NoteDTO>>.BadRequest("An error occurred while retrieving notes."));
+        }
+    }
+
+    // GET: api/notes/{id}
+    [HttpGet("{id:guid}")]
+    public async Task<ActionResult<ApiResponse<NoteDTO>>> GetNote(Guid id)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var notes = await _unitOfWork.Notes.FindByUserIdAsync(userId);
+            var noteList = notes.ToList();
+            var note = noteList.FirstOrDefault(n => n.Id == id);
+
+            if (note == null)
+                return NotFound(ApiResponse<NoteDTO>.NotFound($"Note with ID {id} not found."));
+
+            var noteDto = new NoteDTO
+            {
+                Id = note.Id,
+                Content = note.Content,
+                CourseId = note.CourseId,
+                CourseTitle = note.Course?.Title,
+                Attachments = note.Attachments.Select(a => new NoteAttachmentDTO
+                {
+                    Id = a.Id,
+                    Name = a.Name,
+                    Type = a.Type,
+                    Base64 = a.Base64
+                }).ToList(),
+                CreatedAt = note.CreatedAt
+            };
+
+            return Ok(ApiResponse<NoteDTO>.Ok(noteDto, "Note retrieved successfully."));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving note with ID {NoteId}", id);
+            return StatusCode(500, ApiResponse<NoteDTO>.BadRequest("An error occurred while retrieving the note."));
+        }
+    }
+
+    // POST: api/notes
+    [HttpPost]
+    public async Task<ActionResult<ApiResponse<NoteDTO>>> CreateNote(CreateNoteDTO createNoteDto)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(createNoteDto.Content))
+                return BadRequest(ApiResponse<NoteDTO>.BadRequest("Note content cannot be empty."));
+
+            var userId = GetUserId();
+            var course = await _unitOfWork.Courses.GetByIdAsync(createNoteDto.CourseId);
+            if (course == null || course.UserId != userId)
+                return NotFound(ApiResponse<NoteDTO>.NotFound($"Course with ID {createNoteDto.CourseId} not found."));
+
+            var note = new Note
+            {
+                Id = Guid.NewGuid(),
+                Content = createNoteDto.Content,
+                CourseId = createNoteDto.CourseId,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            // Add attachments
+            foreach (var attachment in createNoteDto.Attachments)
+            {
+                note.Attachments.Add(new NoteAttachment
+                {
+                    Id = Guid.NewGuid(),
+                    Name = attachment.Name,
+                    Type = attachment.Type,
+                    Base64 = attachment.Base64
+                });
+            }
+
+            await _unitOfWork.Notes.AddAsync(note);
+            await _unitOfWork.SaveChangesAsync();
+
+            var noteDto = new NoteDTO
+            {
+                Id = note.Id,
+                Content = note.Content,
+                CourseId = note.CourseId,
+                CourseTitle = course.Title,
+                Attachments = note.Attachments.Select(a => new NoteAttachmentDTO
+                {
+                    Id = a.Id,
+                    Name = a.Name,
+                    Type = a.Type,
+                    Base64 = a.Base64
+                }).ToList(),
+                CreatedAt = note.CreatedAt
+            };
+
+            return CreatedAtAction(nameof(GetNote), new { id = noteDto.Id },
+                ApiResponse<NoteDTO>.Ok(noteDto, "Note created successfully."));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating note.");
+            return StatusCode(500, ApiResponse<NoteDTO>.BadRequest("An error occurred while creating the note."));
+        }
+    }
+
+    // PUT: api/notes/{id}
+    [HttpPut("{id:guid}")]
+    public async Task<ActionResult<ApiResponse<NoteDTO>>> UpdateNote(Guid id, UpdateNoteDTO updateNoteDto)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var notes = await _unitOfWork.Notes.FindByUserIdAsync(userId);
+            var noteList = notes.ToList();
+            var note = noteList.FirstOrDefault(n => n.Id == id);
+
+            if (note == null)
+                return NotFound(ApiResponse<NoteDTO>.NotFound($"Note with ID {id} not found."));
+
+            note.Content = updateNoteDto.Content;
+
+            // --- Attachment synchronization ---
+            // The frontend sends attachments with their DB GUIDs (for existing) or
+            // client-generated UUIDs (for newly uploaded ones). We need to:
+            // 1. Remove attachments that no longer exist in the payload (deleted by user).
+            // 2. Update attachments whose ID matches an existing DB row.
+            // 3. Add attachments whose ID does NOT match any existing row (new uploads).
+
+            var incomingIds = updateNoteDto.Attachments.Select(a => a.Id).ToHashSet();
+
+            // Remove attachments that were deleted from the payload
+            var attachmentsToRemove = note.Attachments
+                .Where(a => !incomingIds.Contains(a.Id))
+                .ToList();
+            foreach (var attachment in attachmentsToRemove)
+            {
+                note.Attachments.Remove(attachment);
+            }
+
+            // Update or add attachments
+            foreach (var dtoAttachment in updateNoteDto.Attachments)
+            {
+                var existing = note.Attachments.FirstOrDefault(a => a.Id == dtoAttachment.Id);
+                if (existing != null)
+                {
+                    // Existing attachment — update in place
+                    existing.Name = dtoAttachment.Name;
+                    existing.Type = dtoAttachment.Type;
+                    existing.Base64 = dtoAttachment.Base64;
+                }
+                else
+                {
+                    // New attachment (client-generated UUID from file upload)
+                    note.Attachments.Add(new NoteAttachment
+                    {
+                        Id = dtoAttachment.Id,
+                        Name = dtoAttachment.Name,
+                        Type = dtoAttachment.Type,
+                        Base64 = dtoAttachment.Base64
+                    });
+                }
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+
+            var noteDto = new NoteDTO
+            {
+                Id = note.Id,
+                Content = note.Content,
+                CourseId = note.CourseId,
+                CourseTitle = note.Course?.Title,
+                Attachments = note.Attachments.Select(a => new NoteAttachmentDTO
+                {
+                    Id = a.Id,
+                    Name = a.Name,
+                    Type = a.Type,
+                    Base64 = a.Base64
+                }).ToList(),
+                CreatedAt = note.CreatedAt
+            };
+
+            return Ok(ApiResponse<NoteDTO>.Ok(noteDto, "Note updated successfully."));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating note with ID {NoteId}", id);
+            return StatusCode(500, ApiResponse<NoteDTO>.BadRequest("An error occurred while updating the note."));
+        }
+    }
+
+    // DELETE: api/notes/{id}
+    [HttpDelete("{id:guid}")]
+    public async Task<ActionResult<ApiResponse<bool>>> DeleteNote(Guid id)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var notes = await _unitOfWork.Notes.FindByUserIdAsync(userId);
+            var noteList = notes.ToList();
+            var note = noteList.FirstOrDefault(n => n.Id == id);
+
+            if (note == null)
+                return NotFound(ApiResponse<bool>.NotFound($"Note with ID {id} not found."));
+
+            _unitOfWork.Notes.Remove(note);
+            await _unitOfWork.SaveChangesAsync();
+
+            return Ok(ApiResponse<bool>.Ok(true, "Note deleted successfully."));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting note with ID {NoteId}", id);
+            return StatusCode(500, ApiResponse<bool>.BadRequest("An error occurred while deleting the note."));
+        }
+    }
+
+    // DELETE: api/notes/{noteId}/attachments/{attachmentId}
+    [HttpDelete("{noteId:guid}/attachments/{attachmentId:guid}")]
+    public async Task<ActionResult<ApiResponse<bool>>> DeleteAttachment(Guid noteId, Guid attachmentId)
+    {
+        try
+        {
+            var userId = GetUserId();
+            var notes = await _unitOfWork.Notes.FindByUserIdAsync(userId);
+            var noteList = notes.ToList();
+            var note = noteList.FirstOrDefault(n => n.Id == noteId);
+
+            if (note == null)
+                return NotFound(ApiResponse<bool>.NotFound($"Note with ID {noteId} not found."));
+
+            var attachment = note.Attachments.FirstOrDefault(a => a.Id == attachmentId);
+            if (attachment == null)
+                return NotFound(ApiResponse<bool>.NotFound($"Attachment with ID {attachmentId} not found."));
+
+            note.Attachments.Remove(attachment);
+            await _unitOfWork.SaveChangesAsync();
+
+            return Ok(ApiResponse<bool>.Ok(true, "Attachment deleted successfully."));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting attachment from note {NoteId}", noteId);
+            return StatusCode(500, ApiResponse<bool>.BadRequest("An error occurred while deleting the attachment."));
+        }
+    }
+
+    // POST: api/notes/upload
+    [HttpPost("upload")]
+    [RequestSizeLimit(2_200_000)]
+    public async Task<ActionResult<ApiResponse<NoteDTO>>> UploadTextNote(
+        [FromForm] Guid courseId,
+        [FromForm] IFormFile file)
+    {
+        try
+        {
+            if (file == null || file.Length == 0)
+            {
+                return BadRequest(ApiResponse<NoteDTO>.BadRequest("A .txt or .md file is required."));
+            }
+
+            if (file.Length > 2 * 1024 * 1024)
+            {
+                return BadRequest(ApiResponse<NoteDTO>.BadRequest("File too large. Maximum 2MB."));
+            }
+
+            var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (extension is not ".txt" and not ".md")
+            {
+                return BadRequest(ApiResponse<NoteDTO>.BadRequest("Only .txt and .md files are supported."));
+            }
+
+            var userId = GetUserId();
+            var course = await _unitOfWork.Courses.GetByIdAsync(courseId);
+            if (course == null || course.UserId != userId)
+            {
+                return NotFound(ApiResponse<NoteDTO>.NotFound($"Course with ID {courseId} not found."));
+            }
+
+            string content;
+            using (var reader = new StreamReader(file.OpenReadStream(), Encoding.UTF8, detectEncodingFromByteOrderMarks: true))
+            {
+                content = await reader.ReadToEndAsync();
+            }
+
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                return BadRequest(ApiResponse<NoteDTO>.BadRequest("Uploaded file does not contain any text."));
+            }
+
+            var note = new Note
+            {
+                Id = Guid.NewGuid(),
+                Content = content,
+                CourseId = course.Id,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _unitOfWork.Notes.AddAsync(note);
+            await _unitOfWork.SaveChangesAsync();
+
+            var noteDto = new NoteDTO
+            {
+                Id = note.Id,
+                Content = note.Content,
+                CourseId = note.CourseId,
+                CourseTitle = course.Title,
+                Attachments = new List<NoteAttachmentDTO>(),
+                CreatedAt = note.CreatedAt
+            };
+
+            return CreatedAtAction(nameof(GetNote), new { id = noteDto.Id },
+                ApiResponse<NoteDTO>.Ok(noteDto, "Text note uploaded successfully."));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error uploading text note.");
+            return StatusCode(500, ApiResponse<NoteDTO>.BadRequest("An error occurred while uploading the note."));
+        }
+    }
+
+    // POST: api/notes/analyze-upload
+    [HttpPost("analyze-upload")]
+    public async Task<ActionResult<ApiResponse<AnalyzeUploadResponse>>> AnalyzeAndSave(
+        [FromBody] AnalyzeUploadRequest request,
+        [FromServices] IAiService aiService,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(request.FileBase64))
+            {
+                return BadRequest(ApiResponse<AnalyzeUploadResponse>.BadRequest("File content is required."));
+            }
+
+            if (request.FileBase64.Length > 7_000_000)
+            {
+                return BadRequest(ApiResponse<AnalyzeUploadResponse>.BadRequest("File too large. Maximum 5MB."));
+            }
+
+            var userId = GetUserId();
+
+            var contentForAi = request.FileType.ToLowerInvariant() switch
+            {
+                "text" => Encoding.UTF8.GetString(Convert.FromBase64String(request.FileBase64)),
+                _ => $"[{request.FileType.ToUpperInvariant()} file: {request.FileName}]\n" +
+                     $"Base64 content excerpt:\n{request.FileBase64[..Math.Min(request.FileBase64.Length, 12000)]}"
+            };
+
+            var analysis = await aiService.AnalyzeDocumentAsync(
+                contentForAi,
+                request.FileName,
+                cancellationToken);
+
+            var courseName = !string.IsNullOrWhiteSpace(request.PreferredCourseName)
+                ? request.PreferredCourseName.Trim()
+                : analysis.SuggestedCourseName.Trim();
+
+            if (string.IsNullOrWhiteSpace(courseName))
+            {
+                courseName = "General Notes";
+            }
+
+            var userCourses = (await _unitOfWork.Courses.FindByUserIdAsync(userId)).ToList();
+            var existingCourse = userCourses.FirstOrDefault(c =>
+                string.Equals(c.Title, courseName, StringComparison.OrdinalIgnoreCase));
+
+            var courseWasCreated = false;
+            Course course;
+
+            if (existingCourse != null)
+            {
+                course = existingCourse;
+            }
+            else
+            {
+                course = new Course
+                {
+                    Id = Guid.NewGuid(),
+                    Title = courseName,
+                    Description = analysis.Summary,
+                    UserId = userId,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                await _unitOfWork.Courses.AddAsync(course);
+                courseWasCreated = true;
+            }
+
+            var noteContent = $"## AI Summary\n{analysis.Summary}\n\n" +
+                              (analysis.DetectedTopics.Any()
+                                  ? $"## Detected Topics\n{string.Join("\n", analysis.DetectedTopics.Select(topic => $"- {topic}"))}\n\n"
+                                  : string.Empty) +
+                              $"## Source File\n{request.FileName}";
+
+            var note = new Note
+            {
+                Id = Guid.NewGuid(),
+                Content = noteContent,
+                CourseId = course.Id,
+                CreatedAt = DateTime.UtcNow,
+                Attachments = new List<NoteAttachment>
+                {
+                    new()
+                    {
+                        Id = Guid.NewGuid(),
+                        Name = request.FileName,
+                        Type = request.FileType,
+                        Base64 = request.FileBase64
+                    }
+                }
+            };
+
+            await _unitOfWork.Notes.AddAsync(note);
+            await _unitOfWork.SaveChangesAsync();
+
+            var result = new AnalyzeUploadResponse(
+                NoteId: note.Id,
+                CourseId: course.Id,
+                CourseName: course.Title,
+                CourseWasCreated: courseWasCreated,
+                Summary: analysis.Summary,
+                DetectedTopics: analysis.DetectedTopics,
+                Message: courseWasCreated
+                    ? $"Created new course '{course.Title}' and saved your note."
+                    : $"Note saved under existing course '{course.Title}'.");
+
+            return Ok(ApiResponse<AnalyzeUploadResponse>.Ok(result, result.Message));
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Rate limit"))
+        {
+            return StatusCode(429, ApiResponse<AnalyzeUploadResponse>.BadRequest(ex.Message));
+        }
+        catch (FormatException)
+        {
+            return BadRequest(ApiResponse<AnalyzeUploadResponse>.BadRequest("Invalid base64 file content."));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in AnalyzeAndSave for file '{FileName}'", request.FileName);
+            return StatusCode(500, ApiResponse<AnalyzeUploadResponse>.BadRequest("Failed to analyze and save document."));
+        }
+    }
+}
+
+public record AnalyzeUploadRequest(
+    string FileName,
+    string FileBase64,
+    string FileType,
+    string? PreferredCourseName);
+
+public record AnalyzeUploadResponse(
+    Guid NoteId,
+    Guid CourseId,
+    string CourseName,
+    bool CourseWasCreated,
+    string Summary,
+    List<string> DetectedTopics,
+    string Message);

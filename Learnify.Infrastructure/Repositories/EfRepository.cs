@@ -75,6 +75,15 @@ public class EfRepository<T> : IRepository<T> where T : class
         _dbSet.Remove(entity);
     }
 
+    public virtual async Task DeleteAsync(Guid id)
+    {
+        var entity = await _dbSet.FindAsync(id);
+        if (entity != null)
+        {
+            _dbSet.Remove(entity);
+        }
+    }
+
     public virtual void RemoveRange(IEnumerable<T> entities)
     {
         _dbSet.RemoveRange(entities);

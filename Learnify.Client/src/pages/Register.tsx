@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 
@@ -6,18 +7,35 @@ export default function Register() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { register, isLoading, error } = useAuthStore();
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const { register, isLoading, error: authError, clearError } = useAuthStore();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
+    clearError();
+
     try {
       await register(name, email, password);
       navigate('/dashboard');
-    } catch {
-      // Error is handled by the store
+    } catch (error: unknown) {
+      if (axios.isAxiosError(error) && error.response?.data) {
+        const data = error.response.data;
+        if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+          setSubmitError(data.errors[0]);
+        } else if (data.message) {
+          setSubmitError(data.message);
+        } else {
+          setSubmitError('Registration failed. Please try again.');
+        }
+      } else {
+        setSubmitError('Unable to connect to server. Please check your connection.');
+      }
     }
   };
+
+  const visibleError = submitError || authError;
 
   return (
     <div style={{
@@ -54,19 +72,6 @@ export default function Register() {
         }}>
           Join Learnify today
         </p>
-
-        {error && (
-          <div style={{
-            background: '#fee2e2',
-            color: '#dc2626',
-            padding: '0.75rem 1rem',
-            borderRadius: '8px',
-            marginBottom: '1rem',
-            fontSize: '0.875rem'
-          }}>
-            {error}
-          </div>
-        )}
 
         <div style={{ marginBottom: '1.25rem' }}>
           <label htmlFor="name" style={{
@@ -116,6 +121,7 @@ export default function Register() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            autoComplete="email"
             placeholder="you@example.com"
             style={{
               width: '100%',
@@ -148,6 +154,7 @@ export default function Register() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            autoComplete="new-password"
             placeholder="••••••••"
             style={{
               width: '100%',
@@ -163,6 +170,18 @@ export default function Register() {
             onBlur={(e) => (e.target.style.borderColor = '#d1d5db')}
           />
         </div>
+
+        {visibleError && (
+          <div style={{
+            color: 'red',
+            marginBottom: '1rem',
+            padding: '0.5rem',
+            border: '1px solid red',
+            borderRadius: '4px',
+          }}>
+            {visibleError}
+          </div>
+        )}
 
         <button
           type="submit"

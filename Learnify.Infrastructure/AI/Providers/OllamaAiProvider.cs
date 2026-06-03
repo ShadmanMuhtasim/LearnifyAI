@@ -30,6 +30,20 @@ public class OllamaAiProvider : IAiProvider
         _logger = logger;
     }
 
+    /// <summary>
+    /// Used by AiProviderFactory for runtime BaseUrl configuration.
+    /// </summary>
+    public OllamaAiProvider(HttpClient httpClient, string model, ILogger<OllamaAiProvider> logger)
+    {
+        _httpClient = httpClient;
+        _settings = new AiSettings.OllamaSettings
+        {
+            BaseUrl = httpClient.BaseAddress?.ToString() ?? string.Empty,
+            Model = model
+        };
+        _logger = logger;
+    }
+
     public async Task<string> CompleteAsync(string prompt, AiRequestOptions options, CancellationToken ct = default)
     {
         _logger.LogDebug("Ollama provider: Processing prompt for model {Model}", _settings.Model);

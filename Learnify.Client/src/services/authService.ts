@@ -9,26 +9,33 @@ export interface RegisterRequest {
   name: string;
   email: string;
   password: string;
+  confirmPassword?: string;
+  role?: string;
+}
+
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
 }
 
 export interface AuthResponse {
-  accessToken: string;
+  user: AuthUser;
+  token: string;
   refreshToken: string;
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    role: string;
-  };
+  expiresAt?: string;
 }
 
 export interface TokenRefreshRequest {
   refreshToken: string;
+  userId: string;
 }
 
 export interface TokenRefreshResponse {
   accessToken: string;
   refreshToken: string;
+  user: AuthUser;
 }
 
 class AuthService {
@@ -36,33 +43,75 @@ class AuthService {
    * Login user and store JWT tokens in localStorage
    */
   async login(data: LoginRequest): Promise<AuthResponse> {
-    const response = await apiClient.post<AuthResponse>('/auth/login', data);
-    this.storeTokens(response.data.accessToken, response.data.refreshToken);
-    return response.data;
+    const response = await apiClient.post<any>('/api/auth/login', data);
+    const apiResponse = response.data;
+    // Backend returns: { success: true, data: { token, refreshToken, userId, fullName, email, role, ... }, message }
+    const dataObj = apiResponse.data || apiResponse;
+    const user: AuthUser = {
+      id: dataObj.userId || dataObj.id || '',
+      name: dataObj.fullName || dataObj.name || '',
+      email: dataObj.email || '',
+      role: dataObj.role || '',
+    };
+    const token = dataObj.token || dataObj.accessToken || '';
+    const refreshToken = dataObj.refreshToken || '';
+    this.storeTokens(token, refreshToken, user);
+    return { user, token, refreshToken };
   }
 
   /**
-   * Register new user and store JWT tokens
-   */
+    * Register new user and store JWT tokens
+    */
   async register(data: RegisterRequest): Promise<AuthResponse> {
-    const response = await apiClient.post<AuthResponse>('/auth/register', data);
-    this.storeTokens(response.data.accessToken, response.data.refreshToken);
-    return response.data;
+    const payload = {
+      fullName: data.name,
+      email: data.email,
+      password: data.password,
+      confirmPassword: data.confirmPassword || data.password,
+      role: data.role || 'Student',
+    };
+    const response = await apiClient.post<any>('/api/auth/register', payload);
+    const apiResponse = response.data;
+    const dataObj = apiResponse.data || apiResponse;
+    const user: AuthUser = {
+      id: dataObj.userId || dataObj.id || '',
+      name: dataObj.fullName || dataObj.name || '',
+      email: dataObj.email || '',
+      role: dataObj.role || '',
+    };
+    const token = dataObj.token || dataObj.accessToken || '';
+    const refreshToken = dataObj.refreshToken || '';
+    this.storeTokens(token, refreshToken, user);
+    return { user, token, refreshToken };
   }
 
   /**
    * Refresh expired access token using refresh token
    */
   async refreshTokens(data: TokenRefreshRequest): Promise<TokenRefreshResponse> {
-    const response = await apiClient.post<TokenRefreshResponse>('/auth/refresh-token', data);
-    this.storeTokens(response.data.accessToken, response.data.refreshToken);
-    return response.data;
+    const response = await apiClient.post<any>('/api/auth/refresh', data);
+    const dataObj = response.data.data || response.data;
+    const token = dataObj.token || dataObj.accessToken || '';
+    const refreshToken = dataObj.refreshToken || '';
+    const user: AuthUser = {
+      id: dataObj.userId || dataObj.id || data.userId,
+      name: dataObj.fullName || dataObj.name || this.getCurrentUser()?.name || '',
+      email: dataObj.email || this.getCurrentUser()?.email || '',
+      role: dataObj.role || this.getCurrentUser()?.role || '',
+    };
+    this.storeTokens(token, refreshToken, user);
+    return { accessToken: token, refreshToken, user };
   }
 
   /**
    * Logout and clear stored tokens
    */
   logout(): void {
+    this.clearTokens();
+  }
+
+  async deleteAccount(): Promise<void> {
+    await apiClient.delete('/api/users/me');
     this.clearTokens();
   }
 
@@ -90,14 +139,15 @@ class AuthService {
   /**
    * Get current user from localStorage
    */
-  getCurrentUser(): { id: string; name: string; email: string; role: string } | null {
+  getCurrentUser(): AuthUser | null {
     const userStr = localStorage.getItem('user');
     return userStr ? JSON.parse(userStr) : null;
   }
 
-  private storeTokens(accessToken: string, refreshToken: string): void {
+  private storeTokens(accessToken: string, refreshToken: string, user: AuthUser): void {
     localStorage.setItem('accessToken', accessToken);
     localStorage.setItem('refreshToken', refreshToken);
+    localStorage.setItem('user', JSON.stringify(user));
   }
 
   private clearTokens(): void {

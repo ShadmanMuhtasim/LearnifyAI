@@ -29,6 +29,11 @@ public interface IUnitOfWork : IDisposable
     ILessonRepository Lessons { get; }
 
     /// <summary>
+    /// Gets the per-user AI settings repository.
+    /// </summary>
+    IUserAiSettingsRepository UserAiSettings { get; }
+
+    /// <summary>
     /// Saves all pending changes to the database within a transaction.
     /// </summary>
     Task<int> SaveChangesAsync();

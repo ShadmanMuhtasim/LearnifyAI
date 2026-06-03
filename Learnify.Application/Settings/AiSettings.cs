@@ -42,9 +42,9 @@ public class AiSettings
         public string ApiKey { get; set; } = string.Empty;
 
         /// <summary>
-        /// The Gemini model name (e.g., "gemini-1.5-flash").
+        /// The Gemini model name (e.g., "gemini-3.5-flash").
         /// </summary>
-        public string Model { get; set; } = "gemini-1.5-flash";
+        public string Model { get; set; } = "gemini-3.5-flash";
     }
 
     /// <summary>
@@ -69,9 +69,9 @@ public class AiSettings
     public class OllamaSettings
     {
         /// <summary>
-        /// The base URL of the Ollama server (e.g., "http://localhost:11434").
+        /// The base URL of the Ollama-compatible local server.
         /// </summary>
-        public string BaseUrl { get; set; } = "http://localhost:11434";
+        public string BaseUrl { get; set; } = "http://127.0.0.1:8080";
 
         /// <summary>
         /// The Ollama model name (e.g., "llama3", "mistral", "phi3").

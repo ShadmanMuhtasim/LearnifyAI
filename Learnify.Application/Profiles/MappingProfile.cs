@@ -27,12 +27,22 @@ public class MappingProfile : Profile
             .ForMember(dest => dest.CreatedAt, opt => opt.Ignore());
 
         // Course mappings
+        CreateMap<Course, CourseDto>()
+            .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.Description ?? string.Empty));
+
+        CreateMap<CreateCourseDto, Course>()
+            .ForMember(dest => dest.Id, opt => opt.Ignore())
+            .ForMember(dest => dest.UserId, opt => opt.Ignore())
+            .ForMember(dest => dest.User, opt => opt.Ignore())
+            .ForMember(dest => dest.Notes, opt => opt.Ignore())
+            .ForMember(dest => dest.CreatedAt, opt => opt.Ignore());
+
         CreateMap<Course, CourseDTO>()
             .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
             .ForMember(dest => dest.Title, opt => opt.MapFrom(src => src.Title))
             .ForMember(dest => dest.Description, opt => opt.MapFrom(src => src.Description))
             .ForMember(dest => dest.UserId, opt => opt.MapFrom(src => src.UserId))
-            .ForMember(dest => dest.InstructorName, opt => opt.MapFrom(src => src.User.FullName))
+            .ForMember(dest => dest.InstructorName, opt => opt.MapFrom(src => src.User != null ? src.User.FullName : null))
             .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreatedAt));
 
         CreateMap<CreateCourseDTO, Course>();
@@ -42,12 +52,19 @@ public class MappingProfile : Profile
             .ForMember(dest => dest.UserId, opt => opt.Ignore())
             .ForMember(dest => dest.CreatedAt, opt => opt.Ignore());
 
+        // NoteAttachment mappings
+        CreateMap<NoteAttachment, NoteAttachmentDTO>()
+            .ForMember(dest => dest.Name, opt => opt.MapFrom(src => src.Name))
+            .ForMember(dest => dest.Type, opt => opt.MapFrom(src => src.Type))
+            .ForMember(dest => dest.Base64, opt => opt.MapFrom(src => src.Base64));
+
         // Note mappings
         CreateMap<Note, NoteDTO>()
             .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id))
             .ForMember(dest => dest.Content, opt => opt.MapFrom(src => src.Content))
             .ForMember(dest => dest.CourseId, opt => opt.MapFrom(src => src.CourseId))
-            .ForMember(dest => dest.CourseTitle, opt => opt.MapFrom(src => src.Course.Title))
+            .ForMember(dest => dest.CourseTitle, opt => opt.MapFrom(src => src.Course != null ? src.Course.Title : null))
+            .ForMember(dest => dest.Attachments, opt => opt.MapFrom(src => src.Attachments))
             .ForMember(dest => dest.CreatedAt, opt => opt.MapFrom(src => src.CreatedAt));
 
         CreateMap<CreateNoteDTO, Note>();

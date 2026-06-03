@@ -51,32 +51,6 @@ namespace Learnify.Infrastructure.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("Courses");
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("8f0f0aa2-b920-4880-bbfd-9e14351a0727"),
-                            CreatedAt = new DateTime(2026, 2, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Deep dive into advanced C# features including async/await, reflection, expression trees, and performance optimization techniques.",
-                            Title = "Advanced C# Programming",
-                            UserId = new Guid("b135b12a-f7a7-45b7-8de2-1acd495220c6")
-                        },
-                        new
-                        {
-                            Id = new Guid("524f1e38-3c5e-4bc6-aee4-ecf81edbf4f6"),
-                            CreatedAt = new DateTime(2026, 2, 15, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Build robust and scalable RESTful APIs using ASP.NET Core, including authentication, middleware, and best practices.",
-                            Title = "ASP.NET Core Web API Development",
-                            UserId = new Guid("b135b12a-f7a7-45b7-8de2-1acd495220c6")
-                        },
-                        new
-                        {
-                            Id = new Guid("cac7a130-eb8c-4a30-b635-57254fd61e37"),
-                            CreatedAt = new DateTime(2026, 3, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Description = "Master EF Core including migrations, relationships, query tracking, change tracking, and performance tuning for enterprise applications.",
-                            Title = "Entity Framework Core Masterclass",
-                            UserId = new Guid("b135b12a-f7a7-45b7-8de2-1acd495220c6")
-                        });
                 });
 
             modelBuilder.Entity("Learnify.Core.Entities.Lesson", b =>
@@ -97,6 +71,9 @@ namespace Learnify.Infrastructure.Migrations
                         .HasColumnType("datetime2")
                         .HasDefaultValueSql("GETUTCDATE()");
 
+                    b.Property<TimeSpan?>("Duration")
+                        .HasColumnType("time");
+
                     b.Property<int>("Order")
                         .HasColumnType("int");
 
@@ -104,6 +81,9 @@ namespace Learnify.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(300)
                         .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("VideoUrl")
+                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
 
@@ -118,6 +98,17 @@ namespace Learnify.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("AttachmentBase64")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("AttachmentName")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("AttachmentType")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<string>("Content")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -130,34 +121,46 @@ namespace Learnify.Infrastructure.Migrations
                         .HasColumnType("datetime2")
                         .HasDefaultValueSql("GETUTCDATE()");
 
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("Id");
 
                     b.HasIndex("CourseId");
 
-                    b.ToTable("Notes");
+                    b.HasIndex("UserId");
 
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("7563c5ce-9399-406c-8c0f-152dd7c8fc32"),
-                            Content = "Key takeaway: Use 'await' consistently and avoid .Result to prevent deadlocks. Always prefer async all the way down.",
-                            CourseId = new Guid("8f0f0aa2-b920-4880-bbfd-9e14351a0727"),
-                            CreatedAt = new DateTime(2026, 3, 10, 0, 0, 0, 0, DateTimeKind.Utc)
-                        },
-                        new
-                        {
-                            Id = new Guid("1e026033-e091-4a89-84b0-1bc7be4e00d9"),
-                            Content = "Remember: API versioning is critical for enterprise apps. Consider URL path versioning for simplicity and HTTP header versioning for flexibility.",
-                            CourseId = new Guid("524f1e38-3c5e-4bc6-aee4-ecf81edbf4f6"),
-                            CreatedAt = new DateTime(2026, 3, 20, 0, 0, 0, 0, DateTimeKind.Utc)
-                        },
-                        new
-                        {
-                            Id = new Guid("1bb47140-e4b3-4009-9d3f-8be52837372a"),
-                            Content = "EF Core Performance Tip: Use AsNoTracking() for read-only queries to avoid change tracker overhead. Profile with SQL Server Profiler.",
-                            CourseId = new Guid("cac7a130-eb8c-4a30-b635-57254fd61e37"),
-                            CreatedAt = new DateTime(2026, 4, 1, 0, 0, 0, 0, DateTimeKind.Utc)
-                        });
+                    b.ToTable("Notes");
+                });
+
+            modelBuilder.Entity("Learnify.Core.Entities.NoteAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Base64")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid>("NoteId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NoteId");
+
+                    b.ToTable("NoteAttachments");
                 });
 
             modelBuilder.Entity("Learnify.Core.Entities.User", b =>
@@ -181,6 +184,12 @@ namespace Learnify.Infrastructure.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastLoginAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -200,20 +209,12 @@ namespace Learnify.Infrastructure.Migrations
                     b.HasData(
                         new
                         {
-                            Id = new Guid("ab561e92-25f7-4b5c-9349-d19de15b18f8"),
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Email = "shadman@learnify.com",
-                            FullName = "Shadman Rahman",
-                            PasswordHash = "Admin@123",
-                            Role = "Admin"
-                        },
-                        new
-                        {
                             Id = new Guid("b135b12a-f7a7-45b7-8de2-1acd495220c6"),
-                            CreatedAt = new DateTime(2026, 1, 5, 0, 0, 0, 0, DateTimeKind.Utc),
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
                             Email = "fatima@learnify.com",
                             FullName = "Fatima Akhtar",
-                            PasswordHash = "Instructor@123",
+                            IsActive = true,
+                            PasswordHash = "$2a$11$f5NYkhm9RA0scsEEhwlK2OAuozIv2nG4en571KfDQGczKY9W.X8Lq",
                             Role = "Instructor"
                         },
                         new
@@ -222,15 +223,68 @@ namespace Learnify.Infrastructure.Migrations
                             CreatedAt = new DateTime(2026, 1, 10, 0, 0, 0, 0, DateTimeKind.Utc),
                             Email = "arif@learnify.com",
                             FullName = "Arif Hossain",
-                            PasswordHash = "Student@123",
+                            IsActive = true,
+                            PasswordHash = "$2a$11$nEaM7wvmn2IjWkyvfw3m5eF4UmtNCOjNtB0AfeH1GtKNdLO/y3g3C",
                             Role = "Student"
+                        },
+                        new
+                        {
+                            Id = new Guid("ab561e92-25f7-4b5c-9349-d19de15b18f8"),
+                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Email = "shadman@learnify.com",
+                            FullName = "Shadman Rahman",
+                            IsActive = true,
+                            PasswordHash = "$2a$11$lqLEXMuNVPmeo9sOpXIIfuCuJD0TtVSM65/IrjohLk1blGjblEUZC",
+                            Role = "Admin"
                         });
+                });
+
+            modelBuilder.Entity("Learnify.Core.Entities.UserAiSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ActiveProvider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ApiKey")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("GETUTCDATE()");
+
+                    b.Property<string>("CustomModel")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("OllamaBaseUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("UserAiSettings");
                 });
 
             modelBuilder.Entity("Learnify.Core.Entities.Course", b =>
                 {
                     b.HasOne("Learnify.Core.Entities.User", "User")
-                        .WithMany("Courses")
+                        .WithMany("CreatedCourses")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -257,7 +311,33 @@ namespace Learnify.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Learnify.Core.Entities.User", null)
+                        .WithMany("Notes")
+                        .HasForeignKey("UserId");
+
                     b.Navigation("Course");
+                });
+
+            modelBuilder.Entity("Learnify.Core.Entities.NoteAttachment", b =>
+                {
+                    b.HasOne("Learnify.Core.Entities.Note", "Note")
+                        .WithMany("Attachments")
+                        .HasForeignKey("NoteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Note");
+                });
+
+            modelBuilder.Entity("Learnify.Core.Entities.UserAiSettings", b =>
+                {
+                    b.HasOne("Learnify.Core.Entities.User", "User")
+                        .WithOne("AiSettings")
+                        .HasForeignKey("Learnify.Core.Entities.UserAiSettings", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Learnify.Core.Entities.Course", b =>
@@ -265,9 +345,18 @@ namespace Learnify.Infrastructure.Migrations
                     b.Navigation("Notes");
                 });
 
+            modelBuilder.Entity("Learnify.Core.Entities.Note", b =>
+                {
+                    b.Navigation("Attachments");
+                });
+
             modelBuilder.Entity("Learnify.Core.Entities.User", b =>
                 {
-                    b.Navigation("Courses");
+                    b.Navigation("AiSettings");
+
+                    b.Navigation("CreatedCourses");
+
+                    b.Navigation("Notes");
                 });
 #pragma warning restore 612, 618
         }

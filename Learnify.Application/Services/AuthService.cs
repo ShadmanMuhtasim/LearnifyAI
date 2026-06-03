@@ -14,7 +14,7 @@ using Microsoft.IdentityModel.Tokens;
 namespace Learnify.Application.Services;
 
 /// <summary>
-/// Service implementation for authentication operations.
+/// Service implementation for authentication operations using BCrypt password hashing.
 /// </summary>
 public class AuthService : IAuthService
 {
@@ -35,36 +35,34 @@ public class AuthService : IAuthService
     /// <inheritdoc />
     public async Task<ApiResponse<AuthResponseDTO>> RegisterAsync(RegisterDTO registerDTO)
     {
-        // Check if user already exists
-        var existingUser = await _unitOfWork.Users.FindByEmailAsync(registerDTO.Email);
-        if (existingUser != null)
+        var normalizedEmail = registerDTO.Email.ToLowerInvariant();
+        var emailExists = await _unitOfWork.Users.EmailExistsAsync(normalizedEmail);
+        if (emailExists)
         {
-            return ApiResponse<AuthResponseDTO>.BadRequest("Email already registered.");
+            return ApiResponse<AuthResponseDTO>.Fail(
+                new List<string> { "An account with this email address already exists." });
         }
 
-        // Validate password match
         if (registerDTO.Password != registerDTO.ConfirmPassword)
         {
-            return ApiResponse<AuthResponseDTO>.BadRequest("Passwords do not match.");
+            return ApiResponse<AuthResponseDTO>.Fail(
+                new List<string> { "Passwords do not match." });
         }
 
-        // Create new user
         var user = new User
         {
             FullName = registerDTO.FullName,
-            Email = registerDTO.Email.ToLowerInvariant(),
+            Email = normalizedEmail,
             Role = registerDTO.Role,
             IsActive = true,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            // BCrypt embeds salt inside the hash — no PasswordSalt needed
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(registerDTO.Password)
         };
-
-        // Hash password
-        CreatePasswordHash(user, registerDTO.Password);
 
         await _unitOfWork.Users.AddAsync(user);
         await _unitOfWork.SaveChangesAsync();
 
-        // Generate tokens
         var token = await GenerateJwtTokenAsync(user);
         var refreshToken = GenerateRefreshToken();
 
@@ -87,25 +85,18 @@ public class AuthService : IAuthService
     /// <inheritdoc />
     public async Task<ApiResponse<AuthResponseDTO>> LoginAsync(LoginDTO loginDTO)
     {
-        // Find user by email
         var user = await _unitOfWork.Users.FindByEmailAsync(loginDTO.Email.ToLowerInvariant());
         if (user == null || !user.IsActive)
-        {
             return ApiResponse<AuthResponseDTO>.BadRequest("Invalid email or password.");
-        }
 
-        // Verify password
-        if (!VerifyPassword(loginDTO.Password, user.PasswordHash, user.PasswordSalt))
-        {
+        // BCrypt.Verify compares the plain password against the stored hash
+        if (!BCrypt.Net.BCrypt.Verify(loginDTO.Password, user.PasswordHash))
             return ApiResponse<AuthResponseDTO>.BadRequest("Invalid email or password.");
-        }
 
-        // Update last login
         user.LastLoginAt = DateTime.UtcNow;
         _unitOfWork.Users.Update(user);
         await _unitOfWork.SaveChangesAsync();
 
-        // Generate tokens
         var token = await GenerateJwtTokenAsync(user);
         var refreshToken = GenerateRefreshToken();
 
@@ -130,11 +121,8 @@ public class AuthService : IAuthService
     {
         var user = await _unitOfWork.Users.GetByIdAsync(userId);
         if (user == null || !user.IsActive)
-        {
             return ApiResponse<AuthResponseDTO>.BadRequest("Invalid user.");
-        }
 
-        // Generate new token
         var token = await GenerateJwtTokenAsync(user);
         var newRefreshToken = GenerateRefreshToken();
 
@@ -155,8 +143,10 @@ public class AuthService : IAuthService
     /// <inheritdoc />
     public async Task<string> GenerateJwtTokenAsync(User user)
     {
-        var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.SecretKey));
-        var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
+        var securityKey = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(_jwtSettings.SecretKey));
+        var credentials = new SigningCredentials(
+            securityKey, SecurityAlgorithms.HmacSha256);
 
         var claims = new List<Claim>
         {
@@ -185,19 +175,5 @@ public class AuthService : IAuthService
         using var rng = RandomNumberGenerator.Create();
         rng.GetBytes(randomNumber);
         return Convert.ToBase64String(randomNumber);
-    }
-
-    private void CreatePasswordHash(User user, string password)
-    {
-        using var hmac = new HMACSHA512();
-        user.PasswordSalt = hmac.Key;
-        user.PasswordHash = hmac.ComputeHash(Encoding.UTF8.GetBytes(password));
-    }
-
-    private bool VerifyPassword(string password, byte[] passwordHash, byte[] passwordSalt)
-    {
-        using var hmac = new HMACSHA512(passwordSalt);
-        var computedHash = hmac.ComputeHash(Encoding.UTF8.GetBytes(password));
-        return computedHash.SequenceEqual(passwordHash);
     }
 }

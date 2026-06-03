@@ -80,4 +80,6 @@ $RECYCLE.BIN/
 build/
 out/
 bin/
-obj/
+obj/*.log
+*.err.log
+*.out.log
