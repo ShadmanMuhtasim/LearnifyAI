@@ -6,10 +6,10 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f7fa' }}>
+    <div className="app-shell">
       <Navbar />
-      <main style={{ padding: '2rem 1rem' }}>
-        {children}
+      <main className="app-main">
+        <div className="app-content">{children}</div>
       </main>
     </div>
   );

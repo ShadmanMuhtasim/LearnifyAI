@@ -1,14 +1,7 @@
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { useMemo, useState } from 'react';
 import type { QuizResult as QuizResultData } from '../services/quizService';
-
-const panelStyle: React.CSSProperties = {
-  background: 'white',
-  border: '1px solid #E2E8F0',
-  borderRadius: '8px',
-  padding: '1.25rem',
-  boxShadow: '0 4px 18px rgba(15, 23, 42, 0.06)',
-};
+import { AppButton, Badge, Card, PageHeader, StatCard } from '../components/UI/Primitives';
 
 export default function QuizResult() {
   const { id } = useParams<{ id: string }>();
@@ -32,7 +25,7 @@ export default function QuizResult() {
 
   if (!result || !id) {
     return (
-      <div className="container mt-4">
+      <div className="stack">
         <div className="alert alert-info">
           No quiz result is loaded. Submit a quiz attempt to view detailed results.
         </div>
@@ -43,67 +36,51 @@ export default function QuizResult() {
     );
   }
 
+  const correctCount = result.answers.filter((answer) => answer.isCorrect).length;
+
   return (
-    <div style={{ maxWidth: '920px', margin: '0 auto', padding: '2rem 1rem' }}>
-      <div style={{ marginBottom: '1.25rem' }}>
-        <h1 style={{ margin: 0, color: '#1A202C' }}>{state?.quizTitle || 'Quiz Result'}</h1>
-        <p style={{ margin: '0.35rem 0 0', color: '#64748B' }}>
-          Completed {new Date(result.completedAt).toLocaleString()}
-        </p>
+    <div className="stack">
+      <PageHeader
+        eyebrow="Quiz Result"
+        title={state?.quizTitle || 'Quiz Result'}
+        subtitle={`Completed ${new Date(result.completedAt).toLocaleString()}`}
+        actions={<Badge tone={result.percentage >= 70 ? 'success' : 'warning'}>Result saved</Badge>}
+      />
+
+      <div className="grid grid-3">
+        <StatCard label="Score" value={`${result.score}/${result.totalPoints}`} detail="points awarded" tone="primary" />
+        <StatCard label="Percentage" value={`${result.percentage}%`} detail={result.percentage >= 70 ? 'strong pass' : 'needs review'} tone={result.percentage >= 70 ? 'success' : 'warning'} />
+        <StatCard label="Breakdown" value={`${correctCount} correct`} detail={`${result.answers.length} total answers`} />
       </div>
 
-      <section style={{ ...panelStyle, marginBottom: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-          <div>
-            <div style={{ color: '#64748B', fontWeight: 600 }}>Score</div>
-            <div style={{ fontSize: '2rem', fontWeight: 700, color: '#1E293B' }}>
-              {result.score}/{result.totalPoints}
-            </div>
-          </div>
-          <div>
-            <div style={{ color: '#64748B', fontWeight: 600 }}>Percentage</div>
-            <div style={{ fontSize: '2rem', fontWeight: 700, color: result.percentage >= 70 ? '#047857' : '#B45309' }}>
-              {result.percentage}%
-            </div>
-          </div>
-          <div>
-            <div style={{ color: '#64748B', fontWeight: 600 }}>Breakdown</div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1E293B' }}>
-              {result.answers.filter((answer) => answer.isCorrect).length} correct / {result.answers.length} total
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <div style={{ display: 'grid', gap: '1rem' }}>
+      <div className="stack">
         {result.answers.map((answer, index) => (
-          <section
+          <Card
             key={answer.questionId}
-            style={{
-              ...panelStyle,
-              borderColor: answer.isCorrect ? '#A7F3D0' : '#FECACA',
-              background: answer.isCorrect ? '#F0FDF4' : '#FEF2F2',
-            }}
+            className={`stack ${answer.isCorrect ? 'result-correct' : 'result-incorrect'}`}
           >
-            <h2 style={{ margin: '0 0 0.75rem', fontSize: '1rem', color: '#1E293B' }}>
-              {index + 1}. {answer.questionText}
-            </h2>
-            <div style={{ display: 'grid', gap: '0.45rem', color: '#334155' }}>
+            <div className="split">
+              <h2 style={{ fontSize: '1rem' }}>{index + 1}. {answer.questionText}</h2>
+              <Badge tone={answer.isCorrect ? 'success' : 'danger'}>
+                {answer.isCorrect ? 'Correct' : 'Incorrect'}
+              </Badge>
+            </div>
+            <div className="stack" style={{ gap: 8 }}>
               <div><strong>Your answer:</strong> {answer.userAnswer || 'No answer'}</div>
               <div><strong>Correct answer:</strong> {answer.correctAnswer}</div>
               <div><strong>Result:</strong> {answer.isCorrect ? 'Correct' : 'Incorrect'} ({answer.pointsAwarded}/{answer.points} pts)</div>
               {answer.explanation && <div><strong>Explanation:</strong> {answer.explanation}</div>}
             </div>
-          </section>
+          </Card>
         ))}
       </div>
 
-      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '1.25rem' }}>
+      <div className="cluster">
         <Link to={`/quizzes/${id}`} className="btn btn-primary">Retake Quiz</Link>
         {incorrectAnswers.length > 0 && (
-          <button
+          <AppButton
             type="button"
-            className="btn btn-outline-primary"
+            variant="secondary"
             onClick={() => {
               setRetryActive(true);
               setRetrySubmitted(false);
@@ -111,31 +88,27 @@ export default function QuizResult() {
             }}
           >
             Retry Incorrect Questions
-          </button>
+          </AppButton>
         )}
         <Link to="/quizzes" className="btn btn-outline-secondary">Back to Quizzes</Link>
       </div>
 
       {retryActive && (
-        <section style={{ ...panelStyle, marginTop: '1.25rem' }}>
-          <h2 style={{ margin: '0 0 1rem', fontSize: '1.1rem', color: '#1E293B' }}>
-            Retry Incorrect Questions
-          </h2>
+        <Card className="stack">
+          <h2>Retry Incorrect Questions</h2>
           {retrySubmitted && (
             <div className="alert alert-info">
               Retry score: {retryScore}/{incorrectAnswers.length}
             </div>
           )}
-          <div style={{ display: 'grid', gap: '1rem' }}>
+          <div className="stack">
             {incorrectAnswers.map((answer, index) => (
-              <div key={answer.questionId} style={{ borderTop: index === 0 ? 'none' : '1px solid #E2E8F0', paddingTop: index === 0 ? 0 : '1rem' }}>
-                <div style={{ marginBottom: '0.55rem', fontWeight: 700 }}>
-                  {index + 1}. {answer.questionText}
-                </div>
+              <div key={answer.questionId} className="stack" style={{ borderTop: index === 0 ? 'none' : '1px solid var(--border)', paddingTop: index === 0 ? 0 : '1rem' }}>
+                <strong>{index + 1}. {answer.questionText}</strong>
                 {answer.type === 'MultipleChoice' || answer.type === 'TrueFalse' ? (
-                  <div style={{ display: 'grid', gap: '0.45rem' }}>
+                  <div className="stack" style={{ gap: 8 }}>
                     {(answer.type === 'TrueFalse' ? ['True', 'False'] : answer.options).map((option) => (
-                      <label key={option} style={{ display: 'flex', gap: '0.45rem', alignItems: 'center' }}>
+                      <label key={option} className="quiz-option">
                         <input
                           type="radio"
                           name={`retry-${answer.questionId}`}
@@ -154,11 +127,10 @@ export default function QuizResult() {
                     onChange={(event) => setRetryAnswers((current) => ({ ...current, [answer.questionId]: event.target.value }))}
                     disabled={retrySubmitted}
                     placeholder="Try again..."
-                    style={{ width: '100%', padding: '0.65rem', border: '1px solid #CBD5E1', borderRadius: '8px' }}
                   />
                 )}
                 {retrySubmitted && (
-                  <div style={{ marginTop: '0.55rem', color: '#334155' }}>
+                  <div className="alert alert-info">
                     <strong>
                       {normalizeAnswer(retryAnswers[answer.questionId] || '') === normalizeAnswer(answer.correctAnswer)
                         ? 'Correct'
@@ -171,17 +143,10 @@ export default function QuizResult() {
               </div>
             ))}
           </div>
-          <div style={{ marginTop: '1rem' }}>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => setRetrySubmitted(true)}
-              disabled={retrySubmitted}
-            >
-              Score Retry
-            </button>
-          </div>
-        </section>
+          <AppButton type="button" onClick={() => setRetrySubmitted(true)} disabled={retrySubmitted} style={{ justifySelf: 'start' }}>
+            Score Retry
+          </AppButton>
+        </Card>
       )}
     </div>
   );

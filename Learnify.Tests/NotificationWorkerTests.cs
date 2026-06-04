@@ -1,7 +1,4 @@
 using Learnify.Core.Interfaces;
-using Learnify.Infrastructure.Services;
-using Microsoft.Extensions.Logging;
-using Moq;
 using Xunit;
 using System.Threading.Channels;
 
@@ -15,7 +12,6 @@ public class NotificationWorkerTests : IDisposable
 {
     private readonly Channel<NotificationMessage> _channel;
     private readonly List<string> _processedMessages;
-    private readonly Mock<ILogger<EmailNotificationService>> _loggerMock;
 
     public NotificationWorkerTests()
     {
@@ -26,7 +22,6 @@ public class NotificationWorkerTests : IDisposable
             SingleWriter = false
         });
         _processedMessages = new List<string>();
-        _loggerMock = new Mock<ILogger<EmailNotificationService>>();
     }
 
     [Fact(DisplayName = "Verifies that a notification message can be written to and read from the channel.")]

@@ -10,6 +10,7 @@ using Learnify.Infrastructure.Data;
 using Learnify.Infrastructure.Repositories;
 using Learnify.Infrastructure.Services;
 using Learnify.Infrastructure.UnitOfWork;
+using Learnify.Web.Filters;
 using Learnify.Web.Middleware;
 using Learnify.Web.Validators;
 using Learnify.Web.Workers;
@@ -19,7 +20,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using FluentValidation;
-using FluentValidation.AspNetCore;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -44,18 +44,20 @@ builder.Services.AddCors(options =>
 });
 
 // Add services to the container.
-builder.Services.AddControllersWithViews()
+builder.Services.AddControllersWithViews(options =>
+    {
+        options.Filters.Add<FluentValidationActionFilter>();
+    })
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
     });
 
 // Register AutoMapper
-builder.Services.AddAutoMapper(typeof(MappingProfile));
+builder.Services.AddAutoMapper(_ => { }, typeof(MappingProfile).Assembly);
 
 // Register FluentValidation validators
 builder.Services.AddValidatorsFromAssembly(typeof(CreateUserValidator).Assembly);
-builder.Services.AddFluentValidationAutoValidation();
 
 // Register DbContext with SQL Server
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
@@ -123,39 +125,42 @@ builder.Services.AddHostedService<AiProcessingWorker>();
 
 var app = builder.Build();
 
-// Apply database migrations on startup
-using (var scope = app.Services.CreateScope())
+// Apply database migrations on startup. Integration tests use an in-memory database.
+if (!app.Environment.IsEnvironment("Testing"))
 {
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-
-    try
+    using (var scope = app.Services.CreateScope())
     {
-        logger.LogInformation(
-            "Applying EF Core migrations with ConnectionStrings:DefaultConnection ({ConnectionString}).",
-            RedactConnectionString(connectionString));
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-        dbContext.Database.Migrate();
+        try
+        {
+            logger.LogInformation(
+                "Applying EF Core migrations with ConnectionStrings:DefaultConnection ({ConnectionString}).",
+                RedactConnectionString(connectionString));
 
-        logger.LogInformation("EF Core migrations applied successfully.");
-    }
-    catch (SqlException ex)
-    {
-        logger.LogError(
-            ex,
-            "Database startup failed for ConnectionStrings:DefaultConnection. Server='{Server}', Database='{Database}'. " +
-            "Check that SQL Server is running, the server name is correct, Windows or SQL authentication matches the connection string, " +
-            "and local Encrypt/TrustServerCertificate settings are valid.",
-            GetConnectionStringValue(connectionString, "Data Source"),
-            GetConnectionStringValue(connectionString, "Initial Catalog"));
-        throw;
-    }
-    catch (InvalidOperationException ex)
-    {
-        logger.LogError(
-            ex,
-            "Database startup failed. Confirm ConnectionStrings:DefaultConnection exists and points to a reachable SQL Server database.");
-        throw;
+            dbContext.Database.Migrate();
+
+            logger.LogInformation("EF Core migrations applied successfully.");
+        }
+        catch (SqlException ex)
+        {
+            logger.LogError(
+                ex,
+                "Database startup failed for ConnectionStrings:DefaultConnection. Server='{Server}', Database='{Database}'. " +
+                "Check that SQL Server is running, the server name is correct, Windows or SQL authentication matches the connection string, " +
+                "and local Encrypt/TrustServerCertificate settings are valid.",
+                GetConnectionStringValue(connectionString, "Data Source"),
+                GetConnectionStringValue(connectionString, "Initial Catalog"));
+            throw;
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogError(
+                ex,
+                "Database startup failed. Confirm ConnectionStrings:DefaultConnection exists and points to a reachable SQL Server database.");
+            throw;
+        }
     }
 }
 
@@ -216,3 +221,5 @@ static string GetConnectionStringValue(string value, string key)
         return "";
     }
 }
+
+public partial class Program { }

@@ -93,23 +93,66 @@ public class LocalOpenAiProvider : IAiProvider
             throw new InvalidOperationException($"LocalOpenAI API error: {response.StatusCode} - {errorBody}");
         }
 
+        var endpointPath = "/v1/chat/completions";
         var responseJson = await response.Content.ReadAsStringAsync(ct);
         using var document = JsonDocument.Parse(responseJson);
 
         try
         {
-            var text = document.RootElement
-                .GetProperty("choices")[0]
-                .GetProperty("message")
-                .GetProperty("content")
-                .GetString();
+            var choice = document.RootElement.GetProperty("choices")[0];
+            var message = choice.GetProperty("message");
+            var text = message.GetProperty("content").GetString();
 
-            return text?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                _logger.LogWarning(
+                    "LocalOpenAI response content was empty. Provider={Provider}, Endpoint={Endpoint}, Model={Model}, StatusCode={StatusCode}, Shape={ResponseShape}",
+                    ProviderName,
+                    endpointPath,
+                    _settings.Model,
+                    response.StatusCode,
+                    DescribeResponseShape(document.RootElement));
+
+                throw new InvalidOperationException(
+                    "LocalOpenAI response did not include non-empty choices[0].message.content.");
+            }
+
+            return text.Trim();
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("choices[0].message.content", StringComparison.Ordinal))
+        {
+            throw;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to parse LocalOpenAI response");
             throw new InvalidOperationException("Failed to parse AI response from LocalOpenAI provider.", ex);
         }
+    }
+
+    private static string DescribeResponseShape(JsonElement root)
+    {
+        var choicesCount = root.TryGetProperty("choices", out var choices) &&
+                           choices.ValueKind == JsonValueKind.Array
+            ? choices.GetArrayLength()
+            : 0;
+        var firstChoice = choicesCount > 0 ? choices[0] : default;
+        var finishReason = firstChoice.ValueKind == JsonValueKind.Object &&
+                           firstChoice.TryGetProperty("finish_reason", out var finishReasonElement)
+            ? finishReasonElement.GetString() ?? ""
+            : "";
+        var hasMessage = false;
+        var hasContent = false;
+        var hasReasoningContent = false;
+        if (firstChoice.ValueKind == JsonValueKind.Object &&
+            firstChoice.TryGetProperty("message", out var message) &&
+            message.ValueKind == JsonValueKind.Object)
+        {
+            hasMessage = true;
+            hasContent = message.TryGetProperty("content", out _);
+            hasReasoningContent = message.TryGetProperty("reasoning_content", out _);
+        }
+
+        return $"choices={choicesCount};finish_reason={finishReason};message={hasMessage};content={hasContent};reasoning_content={hasReasoningContent}";
     }
 }

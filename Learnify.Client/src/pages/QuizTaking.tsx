@@ -1,14 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { quizService, type Quiz } from '../services/quizService';
-
-const panelStyle: React.CSSProperties = {
-  background: 'white',
-  border: '1px solid #E2E8F0',
-  borderRadius: '8px',
-  padding: '1.25rem',
-  boxShadow: '0 4px 18px rgba(15, 23, 42, 0.06)',
-};
+import { AppButton, Badge, Card, ErrorState, LoadingState, PageHeader } from '../components/UI/Primitives';
 
 export default function QuizTaking() {
   const { id } = useParams<{ id: string }>();
@@ -125,71 +118,55 @@ export default function QuizTaking() {
   };
 
   if (loading) {
-    return (
-      <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '60vh' }}>
-        <div className="spinner-border text-primary" role="status">
-          <span className="visually-hidden">Loading...</span>
-        </div>
-      </div>
-    );
+    return <LoadingState label="Loading quiz..." />;
   }
 
   if (!quiz) {
     return (
-      <div className="container mt-4">
-        {error && <div className="alert alert-danger">{error}</div>}
+      <div className="stack">
+        {error && <ErrorState message={error} />}
         <Link to="/quizzes" className="btn btn-outline-primary">Back to Quizzes</Link>
       </div>
     );
   }
 
   return (
-    <div style={{ maxWidth: '920px', margin: '0 auto', padding: '2rem 1rem' }}>
-      <Link to="/quizzes" className="btn btn-link px-0">Back to Quizzes</Link>
-      <div style={{ marginBottom: '1.25rem' }}>
-        <h1 style={{ margin: 0, color: '#1A202C' }}>{quiz.title}</h1>
-        <p style={{ margin: '0.35rem 0 0', color: '#64748B' }}>
-          {quiz.difficulty} - {quiz.questions.length} questions - {answeredCount}/{quiz.questions.length} answered
-          {timeRemaining !== null ? ` - ${formatTime(timeRemaining)} left` : ''}
-        </p>
-      </div>
+    <div className="stack">
+      <Link to="/quizzes" className="btn btn-link" style={{ justifySelf: 'start' }}>Back to Quizzes</Link>
 
-      <div style={{ ...panelStyle, marginBottom: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        <strong>Mode</strong>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
-          <input
-            type="radio"
-            checked={mode === 'practice'}
-            onChange={() => handleModeChange('practice')}
-          />
-          Practice
-        </label>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
-          <input
-            type="radio"
-            checked={mode === 'exam'}
-            onChange={() => handleModeChange('exam')}
-          />
-          Exam
-        </label>
-        {timeRemaining !== null && (
-          <span style={{ marginLeft: 'auto', color: timeRemaining <= 60 ? '#B45309' : '#334155', fontWeight: 700 }}>
-            Timer: {formatTime(timeRemaining)}
-          </span>
-        )}
-      </div>
+      <PageHeader
+        title={quiz.title}
+        subtitle={`${quiz.difficulty} - ${quiz.questions.length} questions - ${answeredCount}/${quiz.questions.length} answered`}
+        actions={timeRemaining !== null ? <Badge tone={timeRemaining <= 60 ? 'warning' : 'primary'}>{formatTime(timeRemaining)} left</Badge> : <Badge tone="muted">No timer</Badge>}
+      />
 
-      {error && <div className="alert alert-danger">{error}</div>}
+      <Card className="split">
+        <div className="cluster">
+          <strong>Mode</strong>
+          <label className="quiz-option" style={{ width: 'auto' }}>
+            <input type="radio" checked={mode === 'practice'} onChange={() => handleModeChange('practice')} />
+            Practice
+          </label>
+          <label className="quiz-option" style={{ width: 'auto' }}>
+            <input type="radio" checked={mode === 'exam'} onChange={() => handleModeChange('exam')} />
+            Exam
+          </label>
+        </div>
+        {timeRemaining !== null && <strong>Timer: {formatTime(timeRemaining)}</strong>}
+      </Card>
+
+      {error && <ErrorState message={error} />}
       {timeExpired && <div className="alert alert-warning">Time expired. Submitting your quiz...</div>}
 
-      <div style={{ display: 'grid', gap: '1rem' }}>
+      <div className="stack">
         {quiz.questions.map((question, index) => (
-          <section key={question.id} style={panelStyle}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', marginBottom: '0.75rem' }}>
-              <h2 style={{ margin: 0, fontSize: '1rem', color: '#1E293B' }}>
-                {index + 1}. {question.questionText}
-              </h2>
-              <span style={{ color: '#64748B', whiteSpace: 'nowrap' }}>{question.points} pt</span>
+          <Card key={question.id} className="stack">
+            <div className="split">
+              <h2 style={{ fontSize: '1rem' }}>{index + 1}. {question.questionText}</h2>
+              <div className="cluster">
+                <Badge tone="primary">{question.type}</Badge>
+                <Badge tone="muted">{question.points} pt</Badge>
+              </div>
             </div>
 
             {question.type === 'ShortAnswer' || question.type === 'FillInTheBlank' ? (
@@ -199,23 +176,11 @@ export default function QuizTaking() {
                 rows={3}
                 disabled={timeExpired || submitting}
                 placeholder={question.type === 'FillInTheBlank' ? 'Fill in the blank...' : 'Type your answer...'}
-                style={{ width: '100%', padding: '0.75rem', border: '1px solid #CBD5E1', borderRadius: '8px' }}
               />
             ) : (
-              <div style={{ display: 'grid', gap: '0.6rem' }}>
+              <div className="stack" style={{ gap: 10 }}>
                 {(question.type === 'TrueFalse' ? ['True', 'False'] : question.options).map((option) => (
-                  <label
-                    key={option}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.55rem',
-                      padding: '0.65rem 0.75rem',
-                      border: '1px solid #CBD5E1',
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                    }}
-                  >
+                  <label key={option} className="quiz-option">
                     <input
                       type="radio"
                       name={question.id}
@@ -231,18 +196,11 @@ export default function QuizTaking() {
             )}
 
             {mode === 'practice' && answers[question.id]?.trim() && question.correctAnswer && (
-              <div style={{
-                marginTop: '0.85rem',
-                padding: '0.75rem',
-                borderRadius: '8px',
-                background: normalizeAnswer(answers[question.id]) === normalizeAnswer(question.correctAnswer)
-                  ? '#F0FDF4'
-                  : '#FEF2F2',
-                border: normalizeAnswer(answers[question.id]) === normalizeAnswer(question.correctAnswer)
-                  ? '1px solid #A7F3D0'
-                  : '1px solid #FECACA',
-                color: '#334155',
-              }}>
+              <div className={
+                normalizeAnswer(answers[question.id]) === normalizeAnswer(question.correctAnswer)
+                  ? 'alert alert-success'
+                  : 'alert alert-danger'
+              }>
                 <div>
                   <strong>
                     {normalizeAnswer(answers[question.id]) === normalizeAnswer(question.correctAnswer)
@@ -252,31 +210,17 @@ export default function QuizTaking() {
                   {normalizeAnswer(answers[question.id]) !== normalizeAnswer(question.correctAnswer) &&
                     ` - Correct answer: ${question.correctAnswer}`}
                 </div>
-                {question.explanation && <div style={{ marginTop: '0.35rem' }}>{question.explanation}</div>}
+                {question.explanation && <div className="mt-3">{question.explanation}</div>}
               </div>
             )}
-          </section>
+          </Card>
         ))}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.25rem' }}>
-        <button
-          type="button"
-          onClick={() => void handleSubmit()}
-          disabled={submitting || timeExpired}
-          style={{
-            background: '#2563EB',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            padding: '0.75rem 1.25rem',
-            fontWeight: 600,
-            opacity: submitting ? 0.7 : 1,
-            cursor: submitting ? 'not-allowed' : 'pointer',
-          }}
-        >
+      <div className="cluster" style={{ justifyContent: 'flex-end' }}>
+        <AppButton type="button" onClick={() => void handleSubmit()} disabled={submitting || timeExpired}>
           {submitting ? 'Submitting...' : 'Submit Quiz'}
-        </button>
+        </AppButton>
       </div>
     </div>
   );

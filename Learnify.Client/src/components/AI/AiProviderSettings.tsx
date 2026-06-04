@@ -1,5 +1,6 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState } from 'react';
 import apiClient from '../../services/api';
+import { AppButton, Badge, ErrorState, LoadingState } from '../UI/Primitives';
 
 type ProviderOption = 'Gemini' | 'OpenAI' | 'Claude' | 'Ollama' | 'LocalOpenAI';
 
@@ -30,12 +31,12 @@ const LOCAL_BASE_URL = 'http://127.0.0.1:8080';
 const OLLAMA_MODEL = 'llama3';
 const LOCAL_OPENAI_MODEL = 'Qwen3.6-35B-A3B-UD-Q4_K_M.gguf';
 
-const providerOptions: Array<{ value: ProviderOption; label: string }> = [
-  { value: 'Gemini', label: 'Gemini' },
-  { value: 'OpenAI', label: 'OpenAI' },
-  { value: 'Claude', label: 'Claude' },
-  { value: 'Ollama', label: 'Ollama' },
-  { value: 'LocalOpenAI', label: 'Local OpenAI-Compatible / llama.cpp' },
+const providerOptions: Array<{ value: ProviderOption; label: string; help: string }> = [
+  { value: 'Gemini', label: 'Gemini', help: 'Default cloud model: gemini-3.5-flash.' },
+  { value: 'OpenAI', label: 'OpenAI', help: 'OpenAI API-compatible hosted models.' },
+  { value: 'Claude', label: 'Claude', help: 'Claude API provider.' },
+  { value: 'Ollama', label: 'Ollama', help: 'Local Ollama server using /api/* endpoints.' },
+  { value: 'LocalOpenAI', label: 'Local OpenAI-Compatible / llama.cpp', help: 'OpenAI-compatible local server using /v1/* endpoints.' },
 ];
 
 const defaultModelForProvider = (provider: ProviderOption) => {
@@ -51,43 +52,6 @@ const defaultModelForProvider = (provider: ProviderOption) => {
     default:
       return 'gemini-3.5-flash';
   }
-};
-
-const rootStyle: CSSProperties = {
-  background: '#F7F8FC',
-  borderRadius: '8px',
-  padding: '1.5rem',
-  boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-  color: '#1A202C',
-};
-
-const inputStyle: CSSProperties = {
-  width: '100%',
-  border: '1px solid #E2E8F0',
-  borderRadius: '8px',
-  padding: '0.75rem',
-  outline: 'none',
-  background: 'white',
-};
-
-const primaryButtonStyle: CSSProperties = {
-  background: '#2563EB',
-  color: 'white',
-  border: 'none',
-  borderRadius: '8px',
-  padding: '0.75rem 1.2rem',
-  cursor: 'pointer',
-  fontWeight: 600,
-};
-
-const secondaryButtonStyle: CSSProperties = {
-  background: 'white',
-  color: '#2D3748',
-  border: '1px solid #CBD5E0',
-  borderRadius: '8px',
-  padding: '0.75rem 1.2rem',
-  cursor: 'pointer',
-  fontWeight: 600,
 };
 
 export default function AiProviderSettings() {
@@ -155,6 +119,18 @@ export default function AiProviderSettings() {
       setLocalOpenAiBaseUrl(LOCAL_BASE_URL);
     }
   }, [selectedProvider, model, ollamaBaseUrl, localOpenAiBaseUrl]);
+
+  const selectProvider = (nextProvider: ProviderOption) => {
+    setSelectedProvider(nextProvider);
+    setTestResult(null);
+    setModel(defaultModelForProvider(nextProvider));
+    if (nextProvider === 'Ollama') {
+      setOllamaBaseUrl(ollamaBaseUrl || LOCAL_BASE_URL);
+    }
+    if (nextProvider === 'LocalOpenAI') {
+      setLocalOpenAiBaseUrl(localOpenAiBaseUrl || LOCAL_BASE_URL);
+    }
+  };
 
   const handleSave = async () => {
     if (!model.trim()) {
@@ -224,49 +200,39 @@ export default function AiProviderSettings() {
   };
 
   if (loading) {
-    return (
-      <div style={rootStyle}>
-        <p style={{ margin: 0, color: '#718096' }}>Loading AI provider settings...</p>
-      </div>
-    );
+    return <LoadingState label="Loading AI provider settings..." />;
   }
 
   return (
-    <div style={rootStyle}>
+    <div className="stack">
       {message && (
-        <div style={{
-          marginBottom: '1rem',
-          padding: '0.85rem 1rem',
-          borderRadius: '8px',
-          background: message.tone === 'success' ? '#F0FFF4' : '#FFF5F5',
-          color: message.tone === 'success' ? '#2F855A' : '#C53030',
-          border: message.tone === 'success' ? '1px solid #9AE6B4' : '1px solid #FED7D7',
-        }}>
-          {message.text}
-        </div>
+        message.tone === 'success'
+          ? <div className="alert alert-success">{message.text}</div>
+          : <ErrorState message={message.text} />
       )}
 
-      <div style={{ display: 'grid', gap: '1rem' }}>
-        <div>
-          <label htmlFor="ai-provider" style={{ display: 'block', marginBottom: '0.5rem', color: '#4A5568', fontWeight: 600 }}>
-            Provider
-          </label>
+      <div className="provider-grid" aria-label="AI choices">
+        {providerOptions.map((provider) => (
+          <button
+            key={provider.value}
+            type="button"
+            className={`provider-card ${selectedProvider === provider.value ? 'active' : ''}`}
+            onClick={() => selectProvider(provider.value)}
+          >
+            <strong>{provider.label}</strong>
+            <span>{provider.help}</span>
+            {selectedProvider === provider.value && <Badge tone="primary">Selected</Badge>}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-2">
+        <label>
+          <span className="form-label">Provider</span>
           <select
             id="ai-provider"
             value={selectedProvider}
-            onChange={(event) => {
-              const nextProvider = event.target.value as ProviderOption;
-              setSelectedProvider(nextProvider);
-              setTestResult(null);
-              setModel(defaultModelForProvider(nextProvider));
-              if (nextProvider === 'Ollama') {
-                setOllamaBaseUrl(ollamaBaseUrl || LOCAL_BASE_URL);
-              }
-              if (nextProvider === 'LocalOpenAI') {
-                setLocalOpenAiBaseUrl(localOpenAiBaseUrl || LOCAL_BASE_URL);
-              }
-            }}
-            style={inputStyle}
+            onChange={(event) => selectProvider(event.target.value as ProviderOption)}
           >
             {providerOptions.map((provider) => (
               <option key={provider.value} value={provider.value}>
@@ -274,95 +240,69 @@ export default function AiProviderSettings() {
               </option>
             ))}
           </select>
-        </div>
+        </label>
 
-        {!isOllamaProvider && (
-          <div>
-            <label htmlFor="ai-api-key" style={{ display: 'block', marginBottom: '0.5rem', color: '#4A5568', fontWeight: 600 }}>
-              {isLocalOpenAiProvider ? 'API Key (optional)' : 'API Key'}
-            </label>
-            <input
-              id="ai-api-key"
-              type="password"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              placeholder={settings?.hasApiKey ? 'Saved key exists. Leave blank to keep it.' : isLocalOpenAiProvider ? 'Optional bearer token' : 'Enter your API key'}
-              style={inputStyle}
-            />
-          </div>
-        )}
-
-        {isLocalProvider && (
-          <div>
-            <label htmlFor="local-base-url" style={{ display: 'block', marginBottom: '0.5rem', color: '#4A5568', fontWeight: 600 }}>
-              Base URL
-            </label>
-            <input
-              id="local-base-url"
-              type="text"
-              value={selectedBaseUrl}
-              onChange={(event) => setSelectedBaseUrl(event.target.value)}
-              placeholder={LOCAL_BASE_URL}
-              style={inputStyle}
-            />
-          </div>
-        )}
-
-        <div>
-          <label htmlFor="ai-model" style={{ display: 'block', marginBottom: '0.5rem', color: '#4A5568', fontWeight: 600 }}>
-            Model
-          </label>
+        <label>
+          <span className="form-label">Model</span>
           <input
             id="ai-model"
             type="text"
             value={model}
             onChange={(event) => setModel(event.target.value)}
             placeholder={isLocalOpenAiProvider ? LOCAL_OPENAI_MODEL : isOllamaProvider ? OLLAMA_MODEL : 'gemini-3.5-flash'}
-            style={inputStyle}
           />
-        </div>
+        </label>
+      </div>
 
-        {testResult && (
-          <div style={{
-            padding: '0.85rem 1rem',
-            borderRadius: '8px',
-            background: testResult.success ? '#F0FFF4' : '#FFF5F5',
-            color: testResult.success ? '#2F855A' : '#C53030',
-            border: testResult.success ? '1px solid #9AE6B4' : '1px solid #FED7D7',
-          }}>
-            {testResult.message}
+      {!isOllamaProvider && (
+        <label>
+          <span className="form-label">{isLocalOpenAiProvider ? 'API Key (optional)' : 'API Key'}</span>
+          <input
+            id="ai-api-key"
+            type="password"
+            value={apiKey}
+            onChange={(event) => setApiKey(event.target.value)}
+            placeholder={settings?.hasApiKey ? 'Saved key exists. Leave blank to keep it.' : isLocalOpenAiProvider ? 'Optional bearer token' : 'Enter your API key'}
+          />
+        </label>
+      )}
+
+      {isLocalProvider && (
+        <div className="grid grid-2">
+          <label>
+            <span className="form-label">Base URL</span>
+            <input
+              id="local-base-url"
+              type="text"
+              value={selectedBaseUrl}
+              onChange={(event) => setSelectedBaseUrl(event.target.value)}
+              placeholder={LOCAL_BASE_URL}
+            />
+          </label>
+          <div className="alert alert-info">
+            {isOllamaProvider
+              ? 'Ollama uses the native /api/* protocol.'
+              : 'LocalOpenAI / llama.cpp uses the OpenAI-compatible /v1/* protocol.'}
           </div>
+        </div>
+      )}
+
+      {testResult && (
+        <div className={testResult.success ? 'alert alert-success' : 'alert alert-danger'}>
+          {testResult.message}
+        </div>
+      )}
+
+      <div className="cluster">
+        {isLocalProvider && (
+          <AppButton type="button" variant="secondary" onClick={() => void handleTestLocal()} disabled={testing}>
+            {testing ? 'Testing...' : 'Test Connection'}
+          </AppButton>
         )}
 
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-          {isLocalProvider && (
-            <button
-              type="button"
-              onClick={() => void handleTestLocal()}
-              disabled={testing}
-              style={{
-                ...secondaryButtonStyle,
-                opacity: testing ? 0.7 : 1,
-                cursor: testing ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {testing ? 'Testing...' : 'Test Connection'}
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={saving}
-            style={{
-              ...primaryButtonStyle,
-              opacity: saving ? 0.7 : 1,
-              cursor: saving ? 'not-allowed' : 'pointer',
-            }}
-          >
-            {saving ? 'Saving...' : 'Save and Use Provider'}
-          </button>
-        </div>
+        <AppButton type="button" onClick={() => void handleSave()} disabled={saving}>
+          {saving ? 'Saving...' : 'Save and Use Provider'}
+        </AppButton>
       </div>
     </div>
   );

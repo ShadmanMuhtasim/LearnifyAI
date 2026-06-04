@@ -140,7 +140,7 @@ public class LessonsController : ControllerBase
             _unitOfWork.Lessons.Remove(lesson);
             await _unitOfWork.SaveChangesAsync();
 
-            return Ok(ApiResponse<object>.Ok(null, "Lesson deleted successfully."));
+            return Ok(ApiResponse.Ok("Lesson deleted successfully."));
         }
         catch (Exception ex)
         {

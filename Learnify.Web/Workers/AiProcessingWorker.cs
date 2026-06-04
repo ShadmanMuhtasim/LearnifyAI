@@ -1,4 +1,3 @@
-using Learnify.Core.Interfaces;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -11,7 +10,6 @@ namespace Learnify.Web.Workers;
 public class AiProcessingWorker : BackgroundService
 {
     private readonly ILogger<AiProcessingWorker> _logger;
-    private int _executionCount;
 
     public AiProcessingWorker(ILogger<AiProcessingWorker> logger)
     {
