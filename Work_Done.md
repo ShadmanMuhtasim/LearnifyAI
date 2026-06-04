@@ -8,14 +8,14 @@
 | Notes & Content | 4 | 2 | 4 |
 | AI Features | 3 | 2 | 6 |
 | Flashcard System | 3 | 0 | 6 |
-| Quiz System | 0 | 0 | 11 |
+| Quiz System | 6 | 0 | 11 |
 | Study Planner | 0 | 0 | 6 |
 | Progress & Analytics | 0 | 0 | 6 |
 | Achievement System | 0 | 0 | 5 |
 | Dashboard | 2 | 1 | 5 |
 | Settings | 0 | 1 | 6 |
 | Infrastructure/UI | 2 | 3 | 2 |
-| **TOTAL** | **20** | **12** | **63** |
+| **TOTAL** | **26** | **12** | **52** |
 
 > Audit performed by scanning actual file content â€” not milestone plans.
 
@@ -35,17 +35,20 @@
 - `Learnify.Web/appsettings.Development.json` - added explicit SQLEXPRESS development connection string and local Ollama BaseUrl/model.
 - `Learnify.Web/Program.cs` - added development console/debug logging, safer DB migration diagnostics, and `UseAuthentication()`.
 - `Learnify.Web/Controllers/AiController.cs` - added normalized provider settings and `POST /api/ai/provider/test`.
-- `Learnify.Infrastructure/DependencyInjection.cs`, `AiProviderFactory.cs`, `UserAiSettingsStore.cs`, `AiSettings.cs` - default Ollama BaseUrl now `http://127.0.0.1:8080`.
+- `Learnify.Infrastructure/DependencyInjection.cs`, `AiProviderFactory.cs`, `UserAiSettingsStore.cs`, `AiSettings.cs` - default Ollama BaseUrl now `http://127.0.0.1:8080`; added separate `LocalOpenAI` provider support for OpenAI-compatible llama.cpp servers.
+- `Learnify.Infrastructure/AI/Providers/LocalOpenAiProvider.cs` - added local `/v1/chat/completions` provider with optional bearer token support.
+- `Learnify.Infrastructure/Migrations/20260603230545_AddLocalOpenAiProvider.cs` - added nullable `UserAiSettings.LocalOpenAiBaseUrl`.
 - `Learnify.Client/src/services/aiService.ts` - normalized backend `provider` response to frontend `activeProvider`.
-- `Learnify.Client/src/components/AI/AiProviderBadge.tsx` - shows `Ollama / Local LLaMA` and local base URL when selected.
-- `Learnify.Client/src/components/AI/AiProviderSettings.tsx` - defaults local LLaMA to `http://127.0.0.1:8080` / `llama3`, adds Test Connection and Save-and-Use flow.
+- `Learnify.Client/src/components/AI/AiProviderBadge.tsx` - distinguishes `Ollama` from `Local OpenAI / llama.cpp` and shows local base URL when selected.
+- `Learnify.Client/src/components/AI/AiProviderSettings.tsx` - adds separate `Local OpenAI-Compatible / llama.cpp` option with `http://127.0.0.1:8080` and `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` defaults.
 - `Learnify.Client/src/pages/Settings.tsx`, `App.tsx`, `Navbar.tsx` - added protected `/settings` route and nav link.
 
 ### Verification Results
 - `dotnet build --no-restore` - passed with 0 errors; existing package/security warnings remain.
 - `npm run build` in `Learnify.Client` - passed with 0 errors.
 - `dotnet test --no-restore` - passed.
-- `dotnet ef database update --project Learnify.Infrastructure --startup-project Learnify.Web` - confirmed usable when run with the same non-sandbox local context as the app; no migrations pending.
+- `dotnet ef migrations add AddLocalOpenAiProvider --project Learnify.Infrastructure --startup-project Learnify.Web` - passed.
+- `dotnet ef database update --project Learnify.Infrastructure --startup-project Learnify.Web` - applied `20260603230545_AddLocalOpenAiProvider`.
 - `dotnet run --project Learnify.Web --no-build --launch-profile http` - backend started successfully outside the command sandbox and listened on `http://localhost:5073`.
 - Auth-protected endpoints verified: unauthenticated `GET /api/ai/provider` and `GET /api/courses` returned 401.
 - Registration/login verified with a fresh test user; JWT was issued.
@@ -56,9 +59,11 @@
 - `POST /api/ai/flashcards` verified through Learnify API using Gemini; returned 3 cards with populated `question`/`answer` fields after the parser/prompt alignment fix.
 - Persistent `GET/PUT /api/user/ai-settings` verified: default Gemini returns `gemini-3.5-flash`, saved Gemini never returns the raw key, saved Ollama keeps `http://127.0.0.1:8080`.
 - Direct `POST /api/notes/upload` verified with `.txt` multipart upload: returned 201 and stored extracted text in `Note.Content`.
-- Local LLaMA test endpoint verified: `http://127.0.0.1:8080` is not currently reachable.
-- Ollama/local provider switch verified: saved provider `Ollama`, model `llama3`, BaseUrl `http://127.0.0.1:8080`.
-- Local summarize/flashcards/study tips remain pending because the local LLaMA server is offline; summarize returned 500 while Ollama was selected.
+- Local LLaMA retest 2026-06-04: added separate protocol support for `Ollama` (`/api/*`) and `LocalOpenAI` (`/v1/*`).
+- Direct local server probe confirmed `http://127.0.0.1:8080/v1/models` and `/v1/chat/completions` work with `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`.
+- Ollama remains separate: saved provider `Ollama` still uses `/api/tags` and `/api/generate`.
+- LocalOpenAI settings verified: saved provider `LocalOpenAI`, model `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, BaseUrl `http://127.0.0.1:8080`, and raw API keys are not returned.
+- LocalOpenAI runtime generation verified through Learnify: summarize, flashcards, quiz generation, and generated quiz submission all passed.
 
 ### Local Setup Commands
 ```bash
@@ -85,7 +90,7 @@ dotnet run --project Learnify.Web --launch-profile http
 | M2 - Auth/JWT/API Security | PASS | Live API register, login, refresh, JWT-protected access, and unauthenticated 401 checks passed. |
 | M3 - Frontend Integration/UI | PASS | `npm run build` in `Learnify.Client` passed; static inspection confirms protected routes and single-retry Axios refresh handling. |
 | M4 - Background Services | PASS | `dotnet test --no-restore` passed; NotificationWorker/EmailNotificationService compile and hosted services did not block HTTP startup. |
-| M5 - AI Integration | PASS_WITH_CAVEAT | Gemini default `gemini-3.5-flash`, provider status, summarize, and flashcards passed through Learnify API; local LLaMA URL is `http://127.0.0.1:8080` but server is offline. |
+| M5 - AI Integration | PASS_WITH_CAVEAT | Gemini default `gemini-3.5-flash`, provider status, summarize, and flashcards passed through Learnify API; a direct probe previously showed `http://127.0.0.1:8080` serving an OpenAI-compatible llama.cpp API, and Learnify now has a separate `LocalOpenAI` provider for that protocol. |
 | M6R - Smart Learning Core Closeout | PASS_WITH_CAVEAT | New-user empty courses, course CRUD/detail, AI settings, `.txt/.md` note upload, global AI badge, settings UI, and flashcard viewer controls verified; PDF extraction remains partial. |
 
 ### Milestone 1 â€” Backend Foundation â€” âœ… CONFIRMED FUNCTIONAL
@@ -291,17 +296,149 @@ dotnet run --project Learnify.Web --launch-profile http
 
 ---
 
+## Milestone 7 - Quiz Engine - CORE FLOW VERIFIED
+
+### Implementation Summary
+
+- Added quiz persistence entities: `Quiz`, `Question`, `QuizAttempt`, and `QuizAttemptAnswer`.
+- Added `AddQuizEngine` EF migration with `Quizzes`, `Questions`, `QuizAttempts`, and `QuizAttemptAnswers`.
+- Added `AddQuizPolishTimer` EF migration with optional `Quizzes.TimeLimitMinutes`.
+- Extended `IAiService` / `AiProviderFactory` with strict JSON quiz generation and parsing.
+- Added `QuizService` for note ownership validation, quiz save/list/detail, attempt submission, scoring, and result mapping.
+- Added authorized quiz endpoints for generate, list, detail, attempts submit, and attempts list.
+- Added protected frontend routes `/quizzes`, `/quizzes/:id`, and `/quizzes/:id/result`.
+- Added Quizzes link in protected navigation.
+- Added M7.1 quiz polish: fill-in-the-blank generation/scoring, practice/exam answer visibility, optional timer, and frontend retry for incorrect answers.
+
+### Files Changed
+
+- `Learnify.Core/Entities/Quiz.cs`
+- `Learnify.Core/Interfaces/IQuizRepository.cs`
+- `Learnify.Core/Interfaces/IQuizAttemptRepository.cs`
+- `Learnify.Core/Interfaces/IUnitOfWork.cs`
+- `Learnify.Core/Interfaces/IAiService.cs`
+- `Learnify.Core/Models/GeneratedQuizResult.cs`
+- `Learnify.Application/DTOs/QuizDTOs.cs`
+- `Learnify.Application/Interfaces/IQuizService.cs`
+- `Learnify.Application/Services/QuizService.cs`
+- `Learnify.Infrastructure/Data/ApplicationDbContext.cs`
+- `Learnify.Infrastructure/AI/AiProviderFactory.cs`
+- `Learnify.Infrastructure/Repositories/QuizRepository.cs`
+- `Learnify.Infrastructure/Repositories/QuizAttemptRepository.cs`
+- `Learnify.Infrastructure/UnitOfWork/UnitOfWork.cs`
+- `Learnify.Infrastructure/Migrations/20260603175058_AddQuizEngine.cs`
+- `Learnify.Infrastructure/Migrations/20260603195335_AddQuizPolishTimer.cs`
+- `Learnify.Web/Controllers/QuizzesController.cs`
+- `Learnify.Web/Program.cs`
+- `Learnify.Client/src/services/quizService.ts`
+- `Learnify.Client/src/pages/Quizzes.tsx`
+- `Learnify.Client/src/pages/QuizTaking.tsx`
+- `Learnify.Client/src/pages/QuizResult.tsx`
+- `Learnify.Client/src/App.tsx`
+- `Learnify.Client/src/components/Layout/Navbar.tsx`
+
+### Verification Commands
+
+- `dotnet build --no-restore` - passed with 0 errors; existing NuGet vulnerability warnings remain.
+- `dotnet test --no-restore` - passed by exit code.
+- `dotnet ef migrations add AddQuizPolishTimer --project Learnify.Infrastructure --startup-project Learnify.Web` - passed.
+- `dotnet ef database update --project Learnify.Infrastructure --startup-project Learnify.Web` - passed after changing optional quiz course/note foreign keys to `NoAction`.
+- `dotnet run --project Learnify.Web --no-build --launch-profile http` - startup held until command timeout; API was then started from the built DLL for runtime smoke tests.
+- `npm run build` in `Learnify.Client` - passed by exit code.
+
+### Runtime Verification - 2026-06-03
+
+- Protected `GET /api/quizzes` returned 401 without JWT.
+- Registered/logged in a fresh test user and received JWT.
+- Created a course and note with enough study content.
+- Generated a quiz from the note using default Gemini (`gemini-3.5-flash`).
+- Generated an M7.1 mixed quiz with multiple choice, true/false, fill-in-the-blank, and short answer.
+- Confirmed quiz was saved and returned by `GET /api/quizzes`.
+- Confirmed `GET /api/quizzes/{id}?includeAnswers=false` hides correct answers for exam mode.
+- Confirmed `GET /api/quizzes/{id}?includeAnswers=true` returns correct answers and explanations for practice mode.
+- Confirmed generated questions had populated question text, correct answers, explanations, and options where applicable.
+- Confirmed fill-in-the-blank generation uses a blank marker (`____`) and scoring trims whitespace / ignores case.
+- Confirmed the optional timer limit is persisted (`timeLimitMinutes = 1`) and frontend timer mode compiles.
+- Submitted a quiz attempt and received score/percentage.
+- Confirmed result details include user answers, correct answers, correctness, points, and explanations.
+- Confirmed result data includes incorrect answers for the frontend Retry Incorrect Questions session.
+- Confirmed `GET /api/quizzes/{id}/attempts` returned the attempt.
+- Confirmed a second user cannot access the first user's quiz (`404`).
+- Added `LocalOpenAI` provider path for llama.cpp/OpenAI-compatible `/v1/*` servers while keeping `Ollama` on `/api/*`.
+- Confirmed Learnify's provider test reports clear protocol-specific results for `Ollama` and `LocalOpenAI`.
+- Confirmed `LocalOpenAI` can be saved with `http://127.0.0.1:8080` and `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, and `GET /api/ai/provider` reports `LocalOpenAI`.
+- Final LocalOpenAI runtime generation completed successfully through Learnify: provider test passed with `compatibleApi=openai`, summarize returned content, flashcards returned 2 cards, quiz generation returned 2 questions, and submitting the generated quiz scored 2/2.
+
+### Completed Quiz Features
+
+- AI-generated quizzes from note content.
+- Multiple choice, true/false, short answer, and fill-in-the-blank questions.
+- Difficulty selection.
+- Optional timer mode.
+- Practice mode with immediate local feedback and explanations.
+- Exam mode with correct answers hidden until submission.
+- Quiz list/detail API and UI.
+- Quiz taking UI.
+- Attempt scoring and percentage calculation.
+- Result breakdown with correct answers and explanations.
+- Retry Incorrect Questions frontend session.
+- Quiz ownership enforcement.
+
+### Remaining Quiz Gaps
+
+- Matching questions.
+- Scenario-based questions.
+- Coding questions.
+- AI-generated hints.
+- Weakness analysis.
+- Related concept questions.
+- Adaptive quiz engine.
+- Quiz analytics dashboard.
+
+---
+
 ## Planned Tasks
 
-### Milestone 7 â€” Testing & QA
-- [ ] Unit tests for GeminiAiProvider (mock HttpClient)
-- [ ] Unit tests for AiService (mock IAiProvider)
-- [ ] Integration tests for AiController endpoints
-- [ ] Integration tests for UserAiSettingsController
-- [ ] Vitest + React Testing Library for Courses.tsx, Settings.tsx
-- [ ] Playwright E2E: register â†’ create course â†’ add note â†’ generate flashcards
+### Milestone 8 - Testing & QA Hardening - PARTIAL PASS
 
-### Milestone 8 â€” Deployment & DevOps
+Automated tests do not require a local LLM server. `LocalOpenAI` and `Ollama` protocol coverage uses mocked/fake `HttpClient` handlers; the real local provider is reserved for optional runtime smoke verification only.
+
+#### Backend Tests Added
+- [x] `AiProviderProtocolTests` verifies `LocalOpenAI` uses `/v1/chat/completions`, optional bearer auth, malformed response failures, and `Ollama` uses `/api/generate` instead of OpenAI chat endpoints.
+- [x] `QuizServiceTests` verifies scoring for multiple choice, true/false, short answer, fill-in-the-blank trim/case normalization, empty/wrong answers, ownership protection, answer visibility, timer persistence, and malformed AI quiz data rejection.
+- [x] Added `Learnify.Tests` to `Learnify.sln` so solution-level `dotnet test` includes the QA suite.
+- [x] Fixed provider error logging in `OllamaAiProvider` and `LocalOpenAiProvider` so JSON response bodies cannot be misread as log-format placeholders.
+
+#### Frontend Tests Added
+- [x] Added Vitest, React Testing Library, Jest DOM, jsdom, and `npm test -- --run`.
+- [x] `AiProviderSettings.test.tsx` verifies the `LocalOpenAI` option, provider-specific defaults, save payload, and connection-test payload.
+- [x] `AiProviderBadge.test.tsx` verifies `LocalOpenAI` displays separately from `Ollama`.
+- [x] `QuizResult.test.tsx` verifies score display, explanations, and Retry Incorrect Questions UI.
+- [x] Fixed provider dropdown behavior so selecting `LocalOpenAI` switches to the correct local default model instead of keeping the previous provider's model.
+
+#### Verification - 2026-06-04
+- `dotnet build --no-restore` - passed with 0 errors; known NuGet warnings remain.
+- `dotnet test --no-restore` - passed, 18 backend tests.
+- `npm test -- --run` in `Learnify.Client` - passed, 3 files / 6 tests.
+- `npm run build` in `Learnify.Client` - passed.
+- Secret scan for common API-key patterns - no committed cloud AI keys found.
+- `.gitignore` hardened for `node_modules`, `dist`, `.env*`, secrets, coverage, and generic logs.
+- Optional real `LocalOpenAI` runtime smoke passed after the local server became reachable at `http://127.0.0.1:8080`: provider test reported `compatibleApi=openai`, summary returned content, flashcards returned 2 cards, quiz generation returned 2 questions, and submitting the generated quiz scored 2/2. Automated tests still use mocks/fakes and do not require the local LLM.
+
+#### Vulnerability Audit
+- `dotnet list package --vulnerable --include-transitive` at solution level failed due a NuGet cache/version parsing issue (`'' is not a valid version string`).
+- Per-project scans succeeded for `Learnify.Application` and `Learnify.Infrastructure` and confirmed existing transitive vulnerabilities: AutoMapper, Azure.Identity, Microsoft.Data.SqlClient, Microsoft.Extensions.Caching.Memory, System.Formats.Asn1, and System.Text.Json.
+- Per-project scans for `Learnify.Web` and `Learnify.Tests` were blocked by the same NuGet cache/version parsing issue after an attempted `dotnet nuget locals http-cache --clear` could not fully clear locked cache entries.
+
+#### Remaining M8 Work
+- [ ] Integration tests for `AiController` endpoints.
+- [ ] Integration tests for `UserAiSettingsController`.
+- [ ] Integration tests for `QuizzesController`.
+- [ ] Frontend tests for Courses/Settings/quiz-taking timer flows.
+- [ ] Playwright E2E: register -> create course -> add note -> generate quiz -> submit quiz.
+- [ ] Remediate or suppress documented NuGet vulnerabilities.
+
+### Milestone 9 - Deployment & DevOps
 - [ ] Dockerfile for `Learnify.Web`
 - [ ] Dockerfile for `Learnify.Client`
 - [ ] `docker-compose.yml` (backend + frontend + SQL Server)
@@ -309,7 +446,7 @@ dotnet run --project Learnify.Web --launch-profile http
 - [ ] Azure App Service + Static Web Apps deployment
 - [ ] Health check endpoint (`/health`)
 
-### Milestone 9 â€” Documentation & Launch
+### Milestone 10 - Documentation & Launch
 - [ ] Swagger/OpenAPI via Swashbuckle
 - [ ] Getting started guide
 - [ ] API reference
@@ -327,6 +464,8 @@ dotnet run --project Learnify.Web --launch-profile http
 | Milestone 3 â€” Full-Stack Integration & UI | 5/23/2026 |
 | Milestone 4 â€” Background Services | 5/23/2026 |
 | Milestone 5 â€” AI Integration (Multi-Provider) | 5/23/2026 |
+| Milestone 6 - Smart Learning Core (M6R) | 2026-06-03 |
+| Milestone 7 - Quiz Engine core flow | 2026-06-03 |
 
 ---
 
@@ -371,6 +510,8 @@ For production: Azure Key Vault or environment variables injected at deployment 
 
 | Issue | Status | Notes |
 |-------|--------|-------|
-| Local LLaMA server offline | PASS_WITH_CAVEAT | `http://127.0.0.1:8080` is configured, but no local server responded during the checkpoint audit. |
+| Local LLaMA API compatibility | COMPLETE | Learnify now has separate `Ollama` (`/api/*`) and `LocalOpenAI` (`/v1/*`) providers; `LocalOpenAI` runtime generation passed through `/v1/chat/completions`. |
+| Local LLaMA quiz generation | COMPLETE | App-level `LocalOpenAI` quiz generation and generated quiz submission passed with `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`. |
 | PDF extraction partial | PASS_WITH_CAVEAT | `.txt` and `.md` upload persist `Note.Content`; real PDF text extraction is still future work. |
+| Advanced quiz features | Future work | Matching, scenario/coding questions, AI hints, weakness analysis, related concepts, adaptive engine, and analytics dashboard are not implemented. |
 | NuGet vulnerability warnings (19) | Non-blocking | Build passes, but package vulnerability warnings remain for AutoMapper, Azure.Identity, Microsoft.Data.SqlClient, Microsoft.Extensions.Caching.Memory, System.Formats.Asn1, and System.Text.Json. |

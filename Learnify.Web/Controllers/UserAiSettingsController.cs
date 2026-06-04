@@ -15,7 +15,7 @@ namespace Learnify.Web.Controllers;
 [Authorize]
 public class UserAiSettingsController : ControllerBase
 {
-    private static readonly string[] AllowedProviders = ["gemini", "openai", "claude", "ollama"];
+    private static readonly string[] AllowedProviders = ["gemini", "openai", "claude", "ollama", "localopenai"];
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly AiSettings _aiSettings;
@@ -49,11 +49,18 @@ public class UserAiSettingsController : ControllerBase
             return BadRequest(ApiResponse<UserAiSettingsResponseDTO>.BadRequest("Invalid provider name."));
         }
 
-        var normalizedBaseUrl = "http://127.0.0.1:8080";
+        var normalizedOllamaBaseUrl = "http://127.0.0.1:8080";
+        var normalizedLocalOpenAiBaseUrl = "http://127.0.0.1:8080";
         if (provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase) &&
-            !TryNormalizeBaseUrl(request.OllamaBaseUrl, out normalizedBaseUrl, out var baseUrlError))
+            !TryNormalizeBaseUrl(request.OllamaBaseUrl, out normalizedOllamaBaseUrl, out var baseUrlError))
         {
             return BadRequest(ApiResponse<UserAiSettingsResponseDTO>.BadRequest(baseUrlError));
+        }
+
+        if (provider.Equals("LocalOpenAI", StringComparison.OrdinalIgnoreCase) &&
+            !TryNormalizeBaseUrl(request.LocalOpenAiBaseUrl, out normalizedLocalOpenAiBaseUrl, out var localBaseUrlError))
+        {
+            return BadRequest(ApiResponse<UserAiSettingsResponseDTO>.BadRequest(localBaseUrlError));
         }
 
         var userId = GetCurrentUserId();
@@ -78,7 +85,10 @@ public class UserAiSettingsController : ControllerBase
             ? null
             : request.CustomModel.Trim();
         settings.OllamaBaseUrl = provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase)
-            ? normalizedBaseUrl
+            ? normalizedOllamaBaseUrl
+            : null;
+        settings.LocalOpenAiBaseUrl = provider.Equals("LocalOpenAI", StringComparison.OrdinalIgnoreCase)
+            ? normalizedLocalOpenAiBaseUrl
             : null;
 
         if (provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase))
@@ -129,6 +139,7 @@ public class UserAiSettingsController : ControllerBase
                 Model = GetDefaultModel(_aiSettings.ActiveProvider),
                 CustomModel = null,
                 OllamaBaseUrl = _aiSettings.Ollama.BaseUrl,
+                LocalOpenAiBaseUrl = _aiSettings.LocalOpenAI.BaseUrl,
                 HasApiKey = HasDefaultApiKey(_aiSettings.ActiveProvider),
                 IsDefault = true
             };
@@ -147,6 +158,9 @@ public class UserAiSettingsController : ControllerBase
             OllamaBaseUrl = provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase)
                 ? settings.OllamaBaseUrl ?? _aiSettings.Ollama.BaseUrl
                 : null,
+            LocalOpenAiBaseUrl = provider.Equals("LocalOpenAI", StringComparison.OrdinalIgnoreCase)
+                ? settings.LocalOpenAiBaseUrl ?? _aiSettings.LocalOpenAI.BaseUrl
+                : null,
             HasApiKey = !string.IsNullOrWhiteSpace(settings.ApiKey) || HasDefaultApiKey(provider),
             IsDefault = false
         };
@@ -158,6 +172,7 @@ public class UserAiSettingsController : ControllerBase
             "openai" => _aiSettings.OpenAi.Model,
             "claude" => _aiSettings.Claude.Model,
             "ollama" => _aiSettings.Ollama.Model,
+            "localopenai" => _aiSettings.LocalOpenAI.Model,
             _ => _aiSettings.Gemini.Model
         };
 
@@ -167,6 +182,7 @@ public class UserAiSettingsController : ControllerBase
             "openai" => !string.IsNullOrWhiteSpace(_aiSettings.OpenAi.ApiKey),
             "claude" => !string.IsNullOrWhiteSpace(_aiSettings.Claude.ApiKey),
             "gemini" => !string.IsNullOrWhiteSpace(_aiSettings.Gemini.ApiKey),
+            "localopenai" => !string.IsNullOrWhiteSpace(_aiSettings.LocalOpenAI.ApiKey),
             _ => false
         };
 
@@ -182,6 +198,14 @@ public class UserAiSettingsController : ControllerBase
             provider.Equals("local llama", StringComparison.OrdinalIgnoreCase))
         {
             return "Ollama";
+        }
+
+        if (provider.Equals("localopenai", StringComparison.OrdinalIgnoreCase) ||
+            provider.Equals("local openai", StringComparison.OrdinalIgnoreCase) ||
+            provider.Equals("local openai-compatible / llama.cpp", StringComparison.OrdinalIgnoreCase) ||
+            provider.Equals("llama.cpp", StringComparison.OrdinalIgnoreCase))
+        {
+            return "LocalOpenAI";
         }
 
         if (provider.Equals("claude", StringComparison.OrdinalIgnoreCase))
@@ -202,7 +226,7 @@ public class UserAiSettingsController : ControllerBase
         if (!Uri.TryCreate(normalizedBaseUrl, UriKind.Absolute, out var uri) ||
             (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
         {
-            error = "Ollama Base URL must be a full http:// or https:// URL.";
+            error = "Base URL must be a full http:// or https:// URL.";
             return false;
         }
 

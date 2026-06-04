@@ -57,6 +57,14 @@ export default function Navbar() {
         }}>
           Notes
         </Link>
+        <Link to="/quizzes" style={{
+          color: 'white',
+          textDecoration: 'none',
+          fontWeight: 500,
+          opacity: 0.9
+        }}>
+          Quizzes
+        </Link>
         <Link to="/settings" style={{
           color: 'white',
           textDecoration: 'none',

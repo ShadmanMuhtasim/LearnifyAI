@@ -15,6 +15,7 @@
 - [Architecture](#architecture)
 - [Feature Status](#feature-status)
 - [Getting Started](#getting-started)
+- [Testing](#testing)
 - [AI Provider Configuration](#ai-provider-configuration)
 - [Project Structure](#project-structure)
 - [Roadmap](#roadmap)
@@ -57,7 +58,8 @@ LearnifyAI is a full-stack AI-powered learning platform targeting individual lea
 | Gemini | `gemini-3.5-flash` | Cloud — Free tier | ✅ Yes |
 | OpenAI | `gpt-4o-mini` | Cloud — Paid | No |
 | Claude | `claude-sonnet-4-20250514` | Cloud — Paid | No |
-| Ollama | Configurable (e.g. `llama3`) | Local — Free | No |
+| Ollama | Configurable (e.g. `llama3`) | Local `/api/*` — Free | No |
+| LocalOpenAI / llama.cpp | Configurable (e.g. `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`) | Local `/v1/*` — Free | No |
 
 ---
 
@@ -138,7 +140,7 @@ Learnify.Client          → React + TypeScript frontend (Vite)
 | AI Provider Badge | ✅ | ✅ | ✅ Complete |
 | Multi-Provider Support (4 providers) | ✅ | 🔄 | 🔄 Partial |
 | Per-User AI Provider Settings | ✅ | ✅ | ✅ Complete |
-| AI Quiz Generation | ❌ | ❌ | ❌ Not Started |
+| AI Quiz Generation | ✅ | ✅ | ✅ Complete |
 | AI Study Plan Generation | ❌ | ❌ | ❌ Not Started |
 | AI Important Concepts | ❌ | ❌ | ❌ Not Started |
 | AI Exam Questions | ❌ | ❌ | ❌ Not Started |
@@ -168,22 +170,22 @@ Learnify.Client          → React + TypeScript frontend (Vite)
 
 | Feature | Backend | Frontend | Overall |
 |---|---|---|---|
-| Multiple Choice Questions | ❌ | ❌ | ❌ Not Started |
-| True / False Questions | ❌ | ❌ | ❌ Not Started |
-| Fill-in-the-Blank | ❌ | ❌ | ❌ Not Started |
-| Short Answer | ❌ | ❌ | ❌ Not Started |
+| Multiple Choice Questions | ✅ | ✅ | ✅ Complete |
+| True / False Questions | ✅ | ✅ | ✅ Complete |
+| Fill-in-the-Blank | ✅ | ✅ | ✅ Complete |
+| Short Answer | ✅ | ✅ | ✅ Complete |
 | Matching Questions | ❌ | ❌ | ❌ Not Started |
 | Scenario-Based Questions | ❌ | ❌ | ❌ Not Started |
 | Coding Questions | ❌ | ❌ | ❌ Not Started |
-| Timer Mode | ❌ | ❌ | ❌ Not Started |
-| Practice Mode | ❌ | ❌ | ❌ Not Started |
-| Exam Mode | ❌ | ❌ | ❌ Not Started |
-| Difficulty Selection | ❌ | ❌ | ❌ Not Started |
-| Instant Feedback + Explanations | ❌ | ❌ | ❌ Not Started |
+| Timer Mode | ✅ | ✅ | ✅ Complete |
+| Practice Mode | ✅ | ✅ | ✅ Complete |
+| Exam Mode | ✅ | ✅ | ✅ Complete |
+| Difficulty Selection | ✅ | ✅ | ✅ Complete |
+| Instant Feedback + Explanations | ✅ | ✅ | ✅ Complete |
 | AI-Generated Hints | ❌ | ❌ | ❌ Not Started |
-| Score Breakdown | ❌ | ❌ | ❌ Not Started |
+| Score Breakdown | ✅ | ✅ | ✅ Complete |
 | Weakness Analysis | ❌ | ❌ | ❌ Not Started |
-| Retry Incorrect Questions | ❌ | ❌ | ❌ Not Started |
+| Retry Incorrect Questions | N/A | ✅ | ✅ Complete |
 | Related Concept Questions | ❌ | ❌ | ❌ Not Started |
 
 ---
@@ -313,6 +315,23 @@ npm run dev
 
 ---
 
+## Testing
+
+Automated tests must not require a local LLM server. `LocalOpenAI` and `Ollama` provider tests use fake `HttpMessageHandler` responses, so they can run offline and in CI.
+
+```bash
+dotnet build --no-restore
+dotnet test --no-restore
+
+cd Learnify.Client
+npm test -- --run
+npm run build
+```
+
+Optional runtime smoke verification may use a real OpenAI-compatible local server at `http://127.0.0.1:8080`. If that server is not reachable, start it before retrying the runtime smoke.
+
+---
+
 ## AI Provider Configuration
 
 Configured in `Learnify.Web/appsettings.json`:
@@ -323,9 +342,19 @@ Configured in `Learnify.Web/appsettings.json`:
   "Gemini":  { "ApiKey": "", "Model": "gemini-3.5-flash" },
   "OpenAI":  { "ApiKey": "", "Model": "gpt-4o-mini" },
   "Claude":  { "ApiKey": "", "Model": "claude-sonnet-4-20250514" },
-  "Ollama":  { "BaseUrl": "http://127.0.0.1:8080", "Model": "llama3" }
+  "Ollama":  { "BaseUrl": "http://127.0.0.1:8080", "Model": "llama3" },
+  "LocalOpenAI": {
+    "BaseUrl": "http://127.0.0.1:8080",
+    "Model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "ApiKey": ""
+  }
 }
 ```
+
+Local provider protocols are separate:
+- `Ollama` uses Ollama-compatible `/api/tags` and `/api/generate`.
+- `LocalOpenAI / llama.cpp` uses OpenAI-compatible `/v1/models` and `/v1/chat/completions`.
+- Example local base URL: `http://127.0.0.1:8080`.
 
 > ⚠️ **Never commit API keys to source control.** Use `dotnet user-secrets` locally and Azure Key Vault / environment variables in production.
 
@@ -363,10 +392,10 @@ LearnifyAI/
 | M4 — Background Services | Email queue, HostedService | ✅ Done |
 | M5 — AI Integration | Multi-provider AI, summary, flashcards | ✅ Done |
 | M6 — Smart Learning Core | Course CRUD, `.txt/.md` upload, per-user settings, flashcard polish | ✅ M6R verified; PDF extraction remains future work |
-| M7 — Quiz & Flashcard System | Full quiz engine, advanced flashcards | ⏳ Planned |
-| M8 — AI Tutor & Study Planner | Chat interface, calendar scheduler | ⏳ Planned |
+| M7 — Quiz Engine | AI-generated quizzes, taking flow, attempts, scoring, modes, timer, retry, results | ✅ Complete for M7.1 quiz polish; advanced analytics/adaptive features remain future work |
+| M8 — Testing & QA Hardening | Backend unit/provider tests, frontend component tests, builds, vulnerability audit | 🔄 Partial - automated tests pass; integration/E2E and vulnerability remediation remain |
 | M9 — Analytics & Achievements | Progress tracking, gamification | ⏳ Planned |
 | M10 — Dashboard & UI Polish | Full dashboard, dark mode, animations | ⏳ Planned |
-| M11 — Testing & QA | Unit, integration, E2E (Playwright) | ⏳ Planned |
+| M11 — AI Tutor & Study Planner | Chat interface, calendar scheduler | ⏳ Planned |
 | M12 — Deployment & DevOps | Docker, CI/CD, Azure App Service | ⏳ Planned |
 | M13 — Docs & Launch | Swagger, ADRs, getting started guide | ⏳ Planned |

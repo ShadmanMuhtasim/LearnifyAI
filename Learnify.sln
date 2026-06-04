@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Learnify.Infrastructure", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Learnify.Web", "Learnify.Web\Learnify.Web.csproj", "{BE6E1804-AB38-47CB-A513-DF4B2FEBC33A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Learnify.Tests", "Learnify.Tests\Learnify.Tests.csproj", "{485CD919-A335-4C18-9B39-E685CE9D30AB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -36,5 +38,9 @@ Global
 		{BE6E1804-AB38-47CB-A513-DF4B2FEBC33A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BE6E1804-AB38-47CB-A513-DF4B2FEBC33A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{BE6E1804-AB38-47CB-A513-DF4B2FEBC33A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{485CD919-A335-4C18-9B39-E685CE9D30AB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{485CD919-A335-4C18-9B39-E685CE9D30AB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{485CD919-A335-4C18-9B39-E685CE9D30AB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{485CD919-A335-4C18-9B39-E685CE9D30AB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

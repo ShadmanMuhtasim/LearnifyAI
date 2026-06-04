@@ -5,12 +5,13 @@ using Learnify.Infrastructure.AI.Providers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
 
 namespace Learnify.Infrastructure.AI;
 
 /// <summary>
 /// Factory that resolves the configured AI provider at runtime per user.
-/// Supports pluggable providers: Gemini, OpenAI, Ollama, Claude, Mock.
+/// Supports pluggable providers: Gemini, OpenAI, Ollama, LocalOpenAI, Claude, Mock.
 /// Implements IAiService as a unified facade.
 /// Uses UserAiSettingsStore for per-user provider resolution with rate limiting on default key.
 /// </summary>
@@ -88,6 +89,7 @@ public class AiProviderFactory : IAiService
             "openai" => BuildOpenAi(config),
             "claude" => BuildClaude(config),
             "ollama" => BuildOllama(config),
+            "localopenai" => BuildLocalOpenAi(config),
             "mock"   => new MockAiProvider(),
             _        => new MockAiProvider()
         };
@@ -104,11 +106,15 @@ public class AiProviderFactory : IAiService
             "gemini" => !string.IsNullOrWhiteSpace(settings.ApiKey) ? settings.ApiKey : _aiSettings.Gemini.ApiKey,
             "openai" => !string.IsNullOrWhiteSpace(settings.ApiKey) ? settings.ApiKey : _aiSettings.OpenAi.ApiKey,
             "claude" => !string.IsNullOrWhiteSpace(settings.ApiKey) ? settings.ApiKey : _aiSettings.Claude.ApiKey,
+            "localopenai" => settings.ApiKey ?? _aiSettings.LocalOpenAI.ApiKey,
             _ => string.Empty
         };
-        var baseUrl = provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase)
-            ? settings.OllamaBaseUrl ?? _aiSettings.Ollama.BaseUrl
-            : string.Empty;
+        var baseUrl = provider.ToLowerInvariant() switch
+        {
+            "ollama" => settings.OllamaBaseUrl ?? _aiSettings.Ollama.BaseUrl,
+            "localopenai" => settings.LocalOpenAiBaseUrl ?? _aiSettings.LocalOpenAI.BaseUrl,
+            _ => string.Empty
+        };
 
         return new UserAiSettingsStore.ProviderConfig(provider, apiKey ?? string.Empty, model, baseUrl);
     }
@@ -119,6 +125,7 @@ public class AiProviderFactory : IAiService
             "openai" => _aiSettings.OpenAi.Model,
             "claude" => _aiSettings.Claude.Model,
             "ollama" => _aiSettings.Ollama.Model,
+            "localopenai" => _aiSettings.LocalOpenAI.Model,
             _ => _aiSettings.Gemini.Model
         };
 
@@ -128,6 +135,11 @@ public class AiProviderFactory : IAiService
             "openai" => "OpenAI",
             "claude" => "Claude",
             "ollama" => "Ollama",
+            "localopenai" => "LocalOpenAI",
+            "localopenai-compatible" => "LocalOpenAI",
+            "local openai" => "LocalOpenAI",
+            "local openai-compatible / llama.cpp" => "LocalOpenAI",
+            "llama.cpp" => "LocalOpenAI",
             _ => "Gemini"
         };
 
@@ -204,6 +216,33 @@ public class AiProviderFactory : IAiService
             _loggerFactory.CreateLogger<OllamaAiProvider>());
     }
 
+    private LocalOpenAiProvider BuildLocalOpenAi(UserAiSettingsStore.ProviderConfig config)
+    {
+        var baseUrl = string.IsNullOrWhiteSpace(config.BaseUrl)
+            ? "http://127.0.0.1:8080"
+            : config.BaseUrl.Trim();
+
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri))
+        {
+            throw new InvalidOperationException($"Invalid LocalOpenAI BaseUrl configured: {baseUrl}");
+        }
+
+        var httpClient = new HttpClient
+        {
+            BaseAddress = baseUri
+        };
+
+        var model = string.IsNullOrWhiteSpace(config.Model)
+            ? _aiSettings.LocalOpenAI.Model
+            : config.Model;
+
+        return new LocalOpenAiProvider(
+            httpClient,
+            model,
+            config.ApiKey,
+            _loggerFactory.CreateLogger<LocalOpenAiProvider>());
+    }
+
     public async Task<string> SummarizeNoteAsync(string content, CancellationToken ct = default)
     {
         var userId = GetCurrentUserId();
@@ -231,6 +270,41 @@ public class AiProviderFactory : IAiService
         var options = new AiRequestOptions { MaxTokens = 2000, Temperature = 0.7f };
         var response = await provider.CompleteAsync(prompt, options, ct);
         return ParseFlashcards(response);
+    }
+
+    public async Task<GeneratedQuizResult> GenerateQuizAsync(
+        string content,
+        IReadOnlyList<string> questionTypes,
+        string difficulty,
+        int numberOfQuestions,
+        CancellationToken ct = default)
+    {
+        var normalizedTypes = NormalizeQuestionTypes(questionTypes);
+        if (normalizedTypes.Count == 0)
+        {
+            normalizedTypes.Add("MultipleChoice");
+        }
+
+        var requestedCount = Math.Clamp(numberOfQuestions, 1, 20);
+        var normalizedDifficulty = NormalizeDifficulty(difficulty);
+        var userId = GetCurrentUserId();
+        var provider = await GetActiveProviderAsync(userId);
+
+        var prompt = "Generate a quiz from the study material below. " +
+                     "Return ONLY a raw JSON object. Do not include markdown, code fences, prose, or comments. " +
+                     "Use this exact shape: " +
+                     "{\"title\":\"string\",\"questions\":[{\"type\":\"MultipleChoice\",\"questionText\":\"string\",\"options\":[\"A\",\"B\",\"C\",\"D\"],\"correctAnswer\":\"string\",\"explanation\":\"string\"}]}. " +
+                     $"Create exactly {requestedCount} questions. Difficulty: {normalizedDifficulty}. " +
+                     $"Allowed question types: {string.Join(", ", normalizedTypes)}. " +
+                     "For MultipleChoice, include 4 options and make correctAnswer exactly match one option. " +
+                     "For TrueFalse, options must be [\"True\", \"False\"] and correctAnswer must be True or False. " +
+                     "For ShortAnswer, options must be an empty array and correctAnswer must be concise. " +
+                     "For FillInTheBlank, include a blank in questionText using ____ and set options to an empty array.\n\n" +
+                     $"Study material:\n{content}";
+
+        var options = new AiRequestOptions { MaxTokens = 3000, Temperature = 0.3f };
+        var response = await provider.CompleteAsync(prompt, options, ct);
+        return ParseQuiz(response);
     }
 
     public async Task<string> GetStudyTipsAsync(string topic, CancellationToken ct = default)
@@ -271,11 +345,7 @@ public class AiProviderFactory : IAiService
 
     private static List<FlashcardResult> ParseFlashcards(string response)
     {
-        var clean = response.Trim().TrimStart('`').TrimEnd('`');
-        if (clean.StartsWith("json", StringComparison.OrdinalIgnoreCase))
-        {
-            clean = clean[4..].Trim();
-        }
+        var clean = CleanJsonResponse(response);
 
         var options = new System.Text.Json.JsonSerializerOptions
         {
@@ -307,6 +377,179 @@ public class AiProviderFactory : IAiService
             }
         }
     }
+
+    private static GeneratedQuizResult ParseQuiz(string response)
+    {
+        var clean = CleanJsonResponse(response);
+        try
+        {
+            using var document = JsonDocument.Parse(clean);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                throw new InvalidOperationException("AI quiz response must be a JSON object.");
+            }
+
+            var result = new GeneratedQuizResult
+            {
+                Title = root.TryGetProperty("title", out var title)
+                    ? title.GetString()?.Trim() ?? "Generated Quiz"
+                    : "Generated Quiz"
+            };
+
+            if (!root.TryGetProperty("questions", out var questions) ||
+                questions.ValueKind != JsonValueKind.Array)
+            {
+                throw new InvalidOperationException("AI quiz response did not include a questions array.");
+            }
+
+            foreach (var question in questions.EnumerateArray())
+            {
+                var type = question.TryGetProperty("type", out var typeElement)
+                    ? NormalizeQuestionType(typeElement.GetString() ?? "")
+                    : "MultipleChoice";
+                var questionText = question.TryGetProperty("questionText", out var textElement)
+                    ? textElement.GetString()?.Trim() ?? string.Empty
+                    : string.Empty;
+                var correctAnswer = question.TryGetProperty("correctAnswer", out var answerElement)
+                    ? answerElement.GetString()?.Trim() ?? string.Empty
+                    : string.Empty;
+                var explanation = question.TryGetProperty("explanation", out var explanationElement)
+                    ? explanationElement.GetString()?.Trim() ?? string.Empty
+                    : string.Empty;
+                var options = ReadOptions(question);
+
+                if (type == "TrueFalse")
+                {
+                    options = new List<string> { "True", "False" };
+                    correctAnswer = correctAnswer.Equals("false", StringComparison.OrdinalIgnoreCase)
+                        ? "False"
+                        : "True";
+                }
+
+                if (type == "MultipleChoice" &&
+                    options.Count > 0 &&
+                    !options.Any(option => option.Equals(correctAnswer, StringComparison.OrdinalIgnoreCase)))
+                {
+                    correctAnswer = options[0];
+                }
+
+                if (string.IsNullOrWhiteSpace(questionText) ||
+                    string.IsNullOrWhiteSpace(correctAnswer))
+                {
+                    continue;
+                }
+
+                result.Questions.Add(new GeneratedQuizQuestionResult
+                {
+                    Type = type,
+                    QuestionText = questionText,
+                    Options = type is "ShortAnswer" or "FillInTheBlank" ? new List<string>() : options,
+                    CorrectAnswer = correctAnswer,
+                    Explanation = explanation
+                });
+            }
+
+            if (result.Questions.Count == 0)
+            {
+                throw new InvalidOperationException("AI quiz response contained no valid questions.");
+            }
+
+            return result;
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException("AI quiz response was not valid JSON.", ex);
+        }
+    }
+
+    private static List<string> ReadOptions(JsonElement question)
+    {
+        if (!question.TryGetProperty("options", out var optionsElement) ||
+            optionsElement.ValueKind != JsonValueKind.Array)
+        {
+            return new List<string>();
+        }
+
+        return optionsElement.EnumerateArray()
+            .Select(option => option.GetString()?.Trim() ?? string.Empty)
+            .Where(option => !string.IsNullOrWhiteSpace(option))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string CleanJsonResponse(string response)
+    {
+        var clean = response.Trim();
+        if (clean.StartsWith("```", StringComparison.Ordinal))
+        {
+            clean = clean[3..].Trim();
+            if (clean.StartsWith("json", StringComparison.OrdinalIgnoreCase))
+            {
+                clean = clean[4..].Trim();
+            }
+
+            var fenceIndex = clean.LastIndexOf("```", StringComparison.Ordinal);
+            if (fenceIndex >= 0)
+            {
+                clean = clean[..fenceIndex].Trim();
+            }
+        }
+
+        clean = clean.Trim().TrimStart('`').TrimEnd('`').Trim();
+        var objectStart = clean.IndexOf('{');
+        var arrayStart = clean.IndexOf('[');
+        var start = objectStart >= 0 && (arrayStart < 0 || objectStart < arrayStart)
+            ? objectStart
+            : arrayStart;
+
+        if (start >= 0)
+        {
+            var end = clean[start] == '{'
+                ? clean.LastIndexOf('}')
+                : clean.LastIndexOf(']');
+
+            if (end > start)
+            {
+                clean = clean[start..(end + 1)];
+            }
+        }
+
+        return clean.Trim();
+    }
+
+    private static List<string> NormalizeQuestionTypes(IReadOnlyList<string> questionTypes)
+    {
+        return questionTypes
+            .Select(NormalizeQuestionType)
+            .Where(type => type is "MultipleChoice" or "TrueFalse" or "ShortAnswer" or "FillInTheBlank")
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string NormalizeQuestionType(string type)
+    {
+        var normalized = type.Replace(" ", "", StringComparison.OrdinalIgnoreCase)
+            .Replace("-", "", StringComparison.OrdinalIgnoreCase)
+            .Trim();
+
+        return normalized.ToLowerInvariant() switch
+        {
+            "truefalse" => "TrueFalse",
+            "shortanswer" => "ShortAnswer",
+            "fillintheblank" => "FillInTheBlank",
+            "fillblank" => "FillInTheBlank",
+            _ => "MultipleChoice"
+        };
+    }
+
+    private static string NormalizeDifficulty(string difficulty) =>
+        difficulty.Trim().ToLowerInvariant() switch
+        {
+            "easy" => "Easy",
+            "hard" => "Hard",
+            _ => "Medium"
+        };
 
     private sealed class FlashcardJsonItem
     {

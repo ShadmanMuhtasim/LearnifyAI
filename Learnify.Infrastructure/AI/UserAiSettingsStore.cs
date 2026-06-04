@@ -15,8 +15,8 @@ public class UserAiSettingsStore
     // ── Internal types ────────────────────────────────────────────────────────
 
     public record ProviderConfig(
-        string Provider,   // "Gemini" | "OpenAI" | "Claude" | "Ollama" | "Mock"
-        string ApiKey,     // empty for Ollama/Mock
+        string Provider,   // "Gemini" | "OpenAI" | "Claude" | "Ollama" | "LocalOpenAI" | "Mock"
+        string ApiKey,     // empty for Ollama/Mock and optional for LocalOpenAI
         string Model,      // free text — whatever the user/admin types
         string BaseUrl     // only for Ollama
     );
@@ -47,7 +47,7 @@ public class UserAiSettingsStore
             Provider: s.ActiveProvider,
             ApiKey:   GetAdminKey(s),
             Model:    GetAdminModel(s),
-            BaseUrl:  s.Ollama?.BaseUrl ?? ""
+            BaseUrl:  GetAdminBaseUrl(s)
         );
     }
 
@@ -57,6 +57,7 @@ public class UserAiSettingsStore
             "gemini" => s.Gemini?.ApiKey ?? "",
             "openai" => s.OpenAi?.ApiKey ?? "",
             "claude" => s.Claude?.ApiKey ?? "",
+            "localopenai" => s.LocalOpenAI?.ApiKey ?? "",
             _ => ""
         };
 
@@ -67,6 +68,15 @@ public class UserAiSettingsStore
             "openai" => s.OpenAi?.Model ?? "",
             "claude" => s.Claude?.Model ?? "",
             "ollama" => s.Ollama?.Model ?? "",
+            "localopenai" => s.LocalOpenAI?.Model ?? "",
+            _ => ""
+        };
+
+    private static string GetAdminBaseUrl(AiSettings s) =>
+        s.ActiveProvider.ToLowerInvariant() switch
+        {
+            "ollama" => s.Ollama?.BaseUrl ?? "",
+            "localopenai" => s.LocalOpenAI?.BaseUrl ?? "",
             _ => ""
         };
 
@@ -184,7 +194,7 @@ public class UserAiSettingsStore
                 model = hasOwn ? own!.Model : _adminDefault.Model,
                 baseUrl = hasOwn
                     ? own!.BaseUrl
-                    : _adminDefault.Provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase)
+                    : IsLocalProvider(_adminDefault.Provider)
                         ? _adminDefault.BaseUrl
                         : "",
                 remainingDefaultRequests = GetRemainingRequestsNoLock(userId)
@@ -193,6 +203,10 @@ public class UserAiSettingsStore
         }
         finally { _lock.ExitReadLock(); }
     }
+
+    private static bool IsLocalProvider(string provider) =>
+        provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase) ||
+        provider.Equals("LocalOpenAI", StringComparison.OrdinalIgnoreCase);
 
     private int GetRemainingRequestsNoLock(Guid userId)
     {

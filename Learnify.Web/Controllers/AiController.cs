@@ -14,7 +14,7 @@ namespace Learnify.Web.Controllers;
 [Authorize]
 public class AiController : ControllerBase
 {
-    private static readonly string[] AllowedProviders = ["gemini", "openai", "claude", "ollama", "mock"];
+    private static readonly string[] AllowedProviders = ["gemini", "openai", "claude", "ollama", "localopenai", "mock"];
 
     private readonly IAiService _aiService;
     private readonly UserAiSettingsStore _store;
@@ -68,9 +68,12 @@ public class AiController : ControllerBase
         var model = string.IsNullOrWhiteSpace(settings.CustomModel)
             ? GetDefaultModel(provider)
             : settings.CustomModel;
-        var baseUrl = provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase)
-            ? settings.OllamaBaseUrl ?? _aiSettings.Ollama.BaseUrl
-            : "";
+        var baseUrl = provider.ToLowerInvariant() switch
+        {
+            "ollama" => settings.OllamaBaseUrl ?? _aiSettings.Ollama.BaseUrl,
+            "localopenai" => settings.LocalOpenAiBaseUrl ?? _aiSettings.LocalOpenAI.BaseUrl,
+            _ => ""
+        };
 
         return Ok(new
         {
@@ -112,7 +115,9 @@ public class AiController : ControllerBase
             model,
             baseUrl,
             message = provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase)
-                ? "Switched to Ollama / Local LLaMA."
+                ? "Switched to Ollama."
+                : provider.Equals("LocalOpenAI", StringComparison.OrdinalIgnoreCase)
+                    ? "Switched to Local OpenAI-Compatible / llama.cpp."
                 : $"Switched to {provider} with your own credentials."
         });
     }
@@ -162,9 +167,9 @@ public class AiController : ControllerBase
         CancellationToken cancellationToken)
     {
         var provider = NormalizeProviderName(request.Provider);
-        if (!provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase))
+        if (!IsLocalProtocolProvider(provider))
         {
-            return BadRequest(new { success = false, message = "Only Ollama / Local LLaMA connection tests are supported." });
+            return BadRequest(new { success = false, message = "Only Ollama and LocalOpenAI connection tests are supported." });
         }
 
         if (!TryNormalizeBaseUrl(request.BaseUrl, out var baseUrl, out var error))
@@ -178,7 +183,10 @@ public class AiController : ControllerBase
         var httpClient = _httpClientFactory.CreateClient();
         httpClient.BaseAddress = new Uri(baseUrl);
 
-        if (await CanGetAsync(httpClient, "/api/tags", timeoutCts.Token))
+        var ollamaWorks = await CanGetAsync(httpClient, "/api/tags", timeoutCts.Token);
+        var localOpenAiWorks = await CanGetAsync(httpClient, "/v1/models", timeoutCts.Token);
+
+        if (provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase) && ollamaWorks)
         {
             return Ok(new
             {
@@ -190,7 +198,19 @@ public class AiController : ControllerBase
             });
         }
 
-        if (await CanGetAsync(httpClient, "/v1/models", timeoutCts.Token))
+        if (provider.Equals("LocalOpenAI", StringComparison.OrdinalIgnoreCase) && localOpenAiWorks)
+        {
+            return Ok(new
+            {
+                success = true,
+                provider = "LocalOpenAI",
+                baseUrl,
+                compatibleApi = "openai",
+                message = $"Connected to an OpenAI-compatible local server at {baseUrl}."
+            });
+        }
+
+        if (provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase) && localOpenAiWorks)
         {
             return Ok(new
             {
@@ -198,17 +218,29 @@ public class AiController : ControllerBase
                 provider = "Ollama",
                 baseUrl,
                 compatibleApi = "openai",
-                message = $"OpenAI-compatible local server detected at {baseUrl}, but the current local provider uses Ollama-compatible endpoints."
+                message = "This server is OpenAI-compatible, not Ollama-compatible. Select Local OpenAI-Compatible / llama.cpp instead."
+            });
+        }
+
+        if (provider.Equals("LocalOpenAI", StringComparison.OrdinalIgnoreCase) && ollamaWorks)
+        {
+            return Ok(new
+            {
+                success = false,
+                provider = "LocalOpenAI",
+                baseUrl,
+                compatibleApi = "ollama",
+                message = "This server is Ollama-compatible, not OpenAI-compatible. Select Ollama instead."
             });
         }
 
         return Ok(new
         {
             success = false,
-            provider = "Ollama",
+            provider,
             baseUrl,
             compatibleApi = "unknown",
-            message = $"Local LLaMA server not reachable at {baseUrl}."
+            message = $"Local server not reachable at {baseUrl} for provider {provider}."
         });
     }
 
@@ -311,6 +343,14 @@ public class AiController : ControllerBase
             return "Ollama";
         }
 
+        if (provider.Equals("localopenai", StringComparison.OrdinalIgnoreCase) ||
+            provider.Equals("local openai", StringComparison.OrdinalIgnoreCase) ||
+            provider.Equals("local openai-compatible / llama.cpp", StringComparison.OrdinalIgnoreCase) ||
+            provider.Equals("llama.cpp", StringComparison.OrdinalIgnoreCase))
+        {
+            return "LocalOpenAI";
+        }
+
         if (provider.Equals("gemini", StringComparison.OrdinalIgnoreCase))
         {
             return "Gemini";
@@ -335,6 +375,7 @@ public class AiController : ControllerBase
             "openai" => _aiSettings.OpenAi.Model,
             "claude" => _aiSettings.Claude.Model,
             "ollama" => _aiSettings.Ollama.Model,
+            "localopenai" => _aiSettings.LocalOpenAI.Model,
             _ => _aiSettings.Gemini.Model
         };
 
@@ -346,13 +387,16 @@ public class AiController : ControllerBase
         out string normalizedBaseUrl,
         out string error)
     {
-        normalizedModel = string.IsNullOrWhiteSpace(model) && provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase)
-            ? "llama3"
-            : model.Trim();
+        normalizedModel = provider.ToLowerInvariant() switch
+        {
+            "ollama" when string.IsNullOrWhiteSpace(model) => "llama3",
+            "localopenai" when string.IsNullOrWhiteSpace(model) => "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+            _ => model.Trim()
+        };
         normalizedBaseUrl = "";
         error = "";
 
-        if (provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase))
+        if (IsLocalProtocolProvider(provider))
         {
             if (!TryNormalizeBaseUrl(baseUrl, out normalizedBaseUrl, out error))
             {
@@ -362,6 +406,10 @@ public class AiController : ControllerBase
 
         return true;
     }
+
+    private static bool IsLocalProtocolProvider(string provider) =>
+        provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase) ||
+        provider.Equals("LocalOpenAI", StringComparison.OrdinalIgnoreCase);
 
     private static bool TryNormalizeBaseUrl(string baseUrl, out string normalizedBaseUrl, out string error)
     {

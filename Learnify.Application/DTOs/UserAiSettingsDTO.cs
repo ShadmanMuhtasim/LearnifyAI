@@ -6,6 +6,7 @@ public class UserAiSettingsResponseDTO
     public string Model { get; set; } = "gemini-3.5-flash";
     public string? CustomModel { get; set; }
     public string? OllamaBaseUrl { get; set; }
+    public string? LocalOpenAiBaseUrl { get; set; }
     public bool HasApiKey { get; set; }
     public bool IsDefault { get; set; }
 }
@@ -16,4 +17,5 @@ public class UpdateUserAiSettingsDTO
     public string? ApiKey { get; set; }
     public string? CustomModel { get; set; }
     public string? OllamaBaseUrl { get; set; }
+    public string? LocalOpenAiBaseUrl { get; set; }
 }

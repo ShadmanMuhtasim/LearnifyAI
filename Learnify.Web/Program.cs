@@ -71,6 +71,8 @@ builder.Services.AddScoped<ICourseRepository, CourseRepository>();
 builder.Services.AddScoped<INoteRepository, NoteRepository>();
 builder.Services.AddScoped<IUserAiSettingsRepository, UserAiSettingsRepository>();
 builder.Services.AddScoped<ILessonRepository, LessonRepository>();
+builder.Services.AddScoped<IQuizRepository, QuizRepository>();
+builder.Services.AddScoped<IQuizAttemptRepository, QuizAttemptRepository>();
 
 // Register Unit of Work
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -103,6 +105,7 @@ builder.Services.AddAuthorization();
 
 // Register AuthService
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IQuizService, QuizService>();
 
 // Register Background Notification Service (scoped for queueing, singleton channel for shared queue)
 builder.Services.AddSingleton<INotificationService, EmailNotificationService>();

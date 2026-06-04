@@ -83,3 +83,22 @@ bin/
 obj/*.log
 *.err.log
 *.out.log
+
+# Node / frontend
+node_modules/
+**/node_modules/
+dist/
+coverage/
+.vite/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+secrets/
+*.secrets.json
+
+# Logs
+*.log
+*.tmp

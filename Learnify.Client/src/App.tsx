@@ -8,6 +8,9 @@ import NotesList from './pages/NotesList';
 import NoteDetail from './pages/NoteDetail';
 import Lessons from './pages/Lessons';
 import Flashcards from './pages/Flashcards';
+import Quizzes from './pages/Quizzes';
+import QuizTaking from './pages/QuizTaking';
+import QuizResult from './pages/QuizResult';
 import Settings from './pages/Settings';
 import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout/Layout';
@@ -73,6 +76,30 @@ function App() {
           element={
             <PrivateRoute>
               <Layout><Flashcards /></Layout>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/quizzes"
+          element={
+            <PrivateRoute>
+              <Layout><Quizzes /></Layout>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/quizzes/:id"
+          element={
+            <PrivateRoute>
+              <Layout><QuizTaking /></Layout>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/quizzes/:id/result"
+          element={
+            <PrivateRoute>
+              <Layout><QuizResult /></Layout>
             </PrivateRoute>
           }
         />

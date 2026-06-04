@@ -1,13 +1,14 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import apiClient from '../../services/api';
 
-type ProviderOption = 'Gemini' | 'OpenAI' | 'Claude' | 'Ollama';
+type ProviderOption = 'Gemini' | 'OpenAI' | 'Claude' | 'Ollama' | 'LocalOpenAI';
 
 interface UserAiSettingsResponse {
   activeProvider: ProviderOption;
   model: string;
   customModel?: string | null;
   ollamaBaseUrl?: string | null;
+  localOpenAiBaseUrl?: string | null;
   hasApiKey: boolean;
   isDefault: boolean;
 }
@@ -25,15 +26,32 @@ type MessageState = {
   text: string;
 } | null;
 
-const LOCAL_LLAMA_BASE_URL = 'http://127.0.0.1:8080';
-const LOCAL_LLAMA_MODEL = 'llama3';
+const LOCAL_BASE_URL = 'http://127.0.0.1:8080';
+const OLLAMA_MODEL = 'llama3';
+const LOCAL_OPENAI_MODEL = 'Qwen3.6-35B-A3B-UD-Q4_K_M.gguf';
 
 const providerOptions: Array<{ value: ProviderOption; label: string }> = [
   { value: 'Gemini', label: 'Gemini' },
   { value: 'OpenAI', label: 'OpenAI' },
   { value: 'Claude', label: 'Claude' },
-  { value: 'Ollama', label: 'Ollama / Local LLaMA' },
+  { value: 'Ollama', label: 'Ollama' },
+  { value: 'LocalOpenAI', label: 'Local OpenAI-Compatible / llama.cpp' },
 ];
+
+const defaultModelForProvider = (provider: ProviderOption) => {
+  switch (provider) {
+    case 'Ollama':
+      return OLLAMA_MODEL;
+    case 'LocalOpenAI':
+      return LOCAL_OPENAI_MODEL;
+    case 'OpenAI':
+      return 'gpt-4o-mini';
+    case 'Claude':
+      return 'claude-sonnet-4-20250514';
+    default:
+      return 'gemini-3.5-flash';
+  }
+};
 
 const rootStyle: CSSProperties = {
   background: '#F7F8FC',
@@ -77,20 +95,26 @@ export default function AiProviderSettings() {
   const [selectedProvider, setSelectedProvider] = useState<ProviderOption>('Gemini');
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState('gemini-3.5-flash');
-  const [ollamaBaseUrl, setOllamaBaseUrl] = useState(LOCAL_LLAMA_BASE_URL);
+  const [ollamaBaseUrl, setOllamaBaseUrl] = useState(LOCAL_BASE_URL);
+  const [localOpenAiBaseUrl, setLocalOpenAiBaseUrl] = useState(LOCAL_BASE_URL);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [message, setMessage] = useState<MessageState>(null);
   const [testResult, setTestResult] = useState<ProviderTestResponse | null>(null);
 
-  const isLocalProvider = selectedProvider === 'Ollama';
+  const isOllamaProvider = selectedProvider === 'Ollama';
+  const isLocalOpenAiProvider = selectedProvider === 'LocalOpenAI';
+  const isLocalProvider = isOllamaProvider || isLocalOpenAiProvider;
+  const selectedBaseUrl = isLocalOpenAiProvider ? localOpenAiBaseUrl : ollamaBaseUrl;
+  const setSelectedBaseUrl = isLocalOpenAiProvider ? setLocalOpenAiBaseUrl : setOllamaBaseUrl;
 
   const applySettingsToForm = (nextSettings: UserAiSettingsResponse) => {
     setSettings(nextSettings);
     setSelectedProvider(nextSettings.activeProvider || 'Gemini');
-    setModel(nextSettings.customModel || nextSettings.model || LOCAL_LLAMA_MODEL);
-    setOllamaBaseUrl(nextSettings.ollamaBaseUrl || LOCAL_LLAMA_BASE_URL);
+    setModel(nextSettings.customModel || nextSettings.model || OLLAMA_MODEL);
+    setOllamaBaseUrl(nextSettings.ollamaBaseUrl || LOCAL_BASE_URL);
+    setLocalOpenAiBaseUrl(nextSettings.localOpenAiBaseUrl || LOCAL_BASE_URL);
     setApiKey('');
   };
 
@@ -116,13 +140,21 @@ export default function AiProviderSettings() {
 
   useEffect(() => {
     if (selectedProvider === 'Ollama' && !model.trim()) {
-      setModel(LOCAL_LLAMA_MODEL);
+      setModel(OLLAMA_MODEL);
     }
 
     if (selectedProvider === 'Ollama' && !ollamaBaseUrl.trim()) {
-      setOllamaBaseUrl(LOCAL_LLAMA_BASE_URL);
+      setOllamaBaseUrl(LOCAL_BASE_URL);
     }
-  }, [selectedProvider, model, ollamaBaseUrl]);
+
+    if (selectedProvider === 'LocalOpenAI' && !model.trim()) {
+      setModel(LOCAL_OPENAI_MODEL);
+    }
+
+    if (selectedProvider === 'LocalOpenAI' && !localOpenAiBaseUrl.trim()) {
+      setLocalOpenAiBaseUrl(LOCAL_BASE_URL);
+    }
+  }, [selectedProvider, model, ollamaBaseUrl, localOpenAiBaseUrl]);
 
   const handleSave = async () => {
     if (!model.trim()) {
@@ -130,8 +162,8 @@ export default function AiProviderSettings() {
       return;
     }
 
-    if (isLocalProvider && !ollamaBaseUrl.trim()) {
-      setMessage({ tone: 'error', text: 'Enter the local LLaMA Base URL.' });
+    if (isLocalProvider && !selectedBaseUrl.trim()) {
+      setMessage({ tone: 'error', text: 'Enter the local server Base URL.' });
       return;
     }
 
@@ -141,9 +173,10 @@ export default function AiProviderSettings() {
 
       const response = await apiClient.put<{ data: UserAiSettingsResponse }>('/api/user/ai-settings', {
         activeProvider: selectedProvider,
-        apiKey: isLocalProvider ? null : apiKey.trim() || null,
+        apiKey: isOllamaProvider ? null : apiKey.trim() || null,
         customModel: model.trim(),
-        ollamaBaseUrl: isLocalProvider ? ollamaBaseUrl.trim() : null,
+        ollamaBaseUrl: isOllamaProvider ? ollamaBaseUrl.trim() : null,
+        localOpenAiBaseUrl: isLocalOpenAiProvider ? localOpenAiBaseUrl.trim() : null,
       });
 
       applySettingsToForm(response.data.data);
@@ -159,7 +192,7 @@ export default function AiProviderSettings() {
   };
 
   const handleTestLocal = async () => {
-    if (!ollamaBaseUrl.trim()) {
+    if (!selectedBaseUrl.trim()) {
       setMessage({ tone: 'error', text: 'Enter a local server URL first.' });
       return;
     }
@@ -170,9 +203,9 @@ export default function AiProviderSettings() {
       setTestResult(null);
 
       const response = await apiClient.post<ProviderTestResponse>('/api/ai/provider/test', {
-        provider: 'Ollama',
-        baseUrl: ollamaBaseUrl.trim(),
-        model: model.trim() || LOCAL_LLAMA_MODEL,
+        provider: selectedProvider,
+        baseUrl: selectedBaseUrl.trim(),
+        model: model.trim() || (isLocalOpenAiProvider ? LOCAL_OPENAI_MODEL : OLLAMA_MODEL),
       });
 
       setTestResult(response.data);
@@ -183,7 +216,7 @@ export default function AiProviderSettings() {
     } catch (error: any) {
       setMessage({
         tone: 'error',
-        text: error?.response?.data?.message || `Local LLaMA server not reachable at ${ollamaBaseUrl}.`,
+        text: error?.response?.data?.message || `Local server not reachable at ${selectedBaseUrl}.`,
       });
     } finally {
       setTesting(false);
@@ -225,9 +258,12 @@ export default function AiProviderSettings() {
               const nextProvider = event.target.value as ProviderOption;
               setSelectedProvider(nextProvider);
               setTestResult(null);
+              setModel(defaultModelForProvider(nextProvider));
               if (nextProvider === 'Ollama') {
-                setModel(model || LOCAL_LLAMA_MODEL);
-                setOllamaBaseUrl(ollamaBaseUrl || LOCAL_LLAMA_BASE_URL);
+                setOllamaBaseUrl(ollamaBaseUrl || LOCAL_BASE_URL);
+              }
+              if (nextProvider === 'LocalOpenAI') {
+                setLocalOpenAiBaseUrl(localOpenAiBaseUrl || LOCAL_BASE_URL);
               }
             }}
             style={inputStyle}
@@ -240,17 +276,17 @@ export default function AiProviderSettings() {
           </select>
         </div>
 
-        {!isLocalProvider && (
+        {!isOllamaProvider && (
           <div>
             <label htmlFor="ai-api-key" style={{ display: 'block', marginBottom: '0.5rem', color: '#4A5568', fontWeight: 600 }}>
-              API Key
+              {isLocalOpenAiProvider ? 'API Key (optional)' : 'API Key'}
             </label>
             <input
               id="ai-api-key"
               type="password"
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
-              placeholder={settings?.hasApiKey ? 'Saved key exists. Leave blank to keep it.' : 'Enter your API key'}
+              placeholder={settings?.hasApiKey ? 'Saved key exists. Leave blank to keep it.' : isLocalOpenAiProvider ? 'Optional bearer token' : 'Enter your API key'}
               style={inputStyle}
             />
           </div>
@@ -258,15 +294,15 @@ export default function AiProviderSettings() {
 
         {isLocalProvider && (
           <div>
-            <label htmlFor="ollama-base-url" style={{ display: 'block', marginBottom: '0.5rem', color: '#4A5568', fontWeight: 600 }}>
+            <label htmlFor="local-base-url" style={{ display: 'block', marginBottom: '0.5rem', color: '#4A5568', fontWeight: 600 }}>
               Base URL
             </label>
             <input
-              id="ollama-base-url"
+              id="local-base-url"
               type="text"
-              value={ollamaBaseUrl}
-              onChange={(event) => setOllamaBaseUrl(event.target.value)}
-              placeholder={LOCAL_LLAMA_BASE_URL}
+              value={selectedBaseUrl}
+              onChange={(event) => setSelectedBaseUrl(event.target.value)}
+              placeholder={LOCAL_BASE_URL}
               style={inputStyle}
             />
           </div>
@@ -281,7 +317,7 @@ export default function AiProviderSettings() {
             type="text"
             value={model}
             onChange={(event) => setModel(event.target.value)}
-            placeholder={isLocalProvider ? LOCAL_LLAMA_MODEL : 'gemini-3.5-flash'}
+            placeholder={isLocalOpenAiProvider ? LOCAL_OPENAI_MODEL : isOllamaProvider ? OLLAMA_MODEL : 'gemini-3.5-flash'}
             style={inputStyle}
           />
         </div>

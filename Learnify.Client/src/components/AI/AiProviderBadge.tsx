@@ -98,10 +98,18 @@ const AiProviderBadge: React.FC<AiProviderBadgeProps> = ({ onProviderChange }) =
       case 'ollama':
         return {
           icon: '🏠',
-          label: 'Ollama / Local LLaMA',
+          label: 'Ollama',
           color: '#7c2d12',
           bgColor: '#fff7ed',
           borderColor: '#fdba74'
+        };
+      case 'localopenai':
+        return {
+          icon: '🏠',
+          label: 'Local OpenAI / llama.cpp',
+          color: '#155e75',
+          bgColor: '#ecfeff',
+          borderColor: '#67e8f9'
         };
       case 'claude':
         return {
@@ -123,7 +131,7 @@ const AiProviderBadge: React.FC<AiProviderBadgeProps> = ({ onProviderChange }) =
   };
 
   const config = getProviderConfig(provider.activeProvider);
-  const isLocalProvider = provider.activeProvider.toLowerCase() === 'ollama';
+  const isLocalProvider = ['ollama', 'localopenai'].includes(provider.activeProvider.toLowerCase());
 
   return (
     <div style={{

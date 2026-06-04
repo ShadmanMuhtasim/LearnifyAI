@@ -29,6 +29,16 @@ public interface IAiService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Generates a structured quiz from educational content.
+    /// </summary>
+    Task<GeneratedQuizResult> GenerateQuizAsync(
+        string content,
+        IReadOnlyList<string> questionTypes,
+        string difficulty,
+        int numberOfQuestions,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Generates personalized study tips for the given topic.
     /// </summary>
     /// <param name="topic">The topic to generate study tips for.</param>
