@@ -16,13 +16,17 @@ public class NoteRepository : EfRepository<Note>, INoteRepository
 
     public async Task<IEnumerable<Note>> FindByCourseIdAsync(Guid courseId)
     {
-        return await _dbSet.Where(n => n.CourseId == courseId).ToListAsync();
+        return await _dbSet
+            .Include(n => n.Attachments)
+            .Where(n => n.CourseId == courseId)
+            .ToListAsync();
     }
 
     public async Task<IEnumerable<Note>> FindByUserIdAsync(Guid userId)
     {
         return await _dbSet
             .Include(n => n.Course)
+            .Include(n => n.Attachments)
             .Where(n => n.Course.UserId == userId)
             .ToListAsync();
     }

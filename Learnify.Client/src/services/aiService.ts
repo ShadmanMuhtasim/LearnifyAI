@@ -47,7 +47,11 @@ export interface StudyTipsResponse {
 
 export interface ActiveProviderResponse {
   activeProvider: string;
+  provider?: string;
   model: string;
+  mode?: string;
+  baseUrl?: string;
+  remainingDefaultRequests?: number;
 }
 
 // ─── API Functions ───────────────────────────────────────────
@@ -98,5 +102,9 @@ export async function getActiveProvider(): Promise<ActiveProviderResponse> {
   const response = await apiClient.get<ActiveProviderResponse>(
     '/api/ai/provider'
   );
-  return response.data;
+  const data = response.data;
+  return {
+    ...data,
+    activeProvider: data.activeProvider || data.provider || 'Unknown',
+  };
 }

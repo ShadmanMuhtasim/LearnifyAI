@@ -30,6 +30,20 @@ public class OllamaAiProvider : IAiProvider
         _logger = logger;
     }
 
+    /// <summary>
+    /// Used by AiProviderFactory for runtime BaseUrl configuration.
+    /// </summary>
+    public OllamaAiProvider(HttpClient httpClient, string model, ILogger<OllamaAiProvider> logger)
+    {
+        _httpClient = httpClient;
+        _settings = new AiSettings.OllamaSettings
+        {
+            BaseUrl = httpClient.BaseAddress?.ToString() ?? string.Empty,
+            Model = model
+        };
+        _logger = logger;
+    }
+
     public async Task<string> CompleteAsync(string prompt, AiRequestOptions options, CancellationToken ct = default)
     {
         _logger.LogDebug("Ollama provider: Processing prompt for model {Model}", _settings.Model);
@@ -58,7 +72,10 @@ public class OllamaAiProvider : IAiProvider
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync(ct);
-            _logger.LogError(errorBody, "Ollama API returned error status {StatusCode}", response.StatusCode);
+            _logger.LogError(
+                "Ollama API returned error status {StatusCode}: {ErrorBody}",
+                response.StatusCode,
+                errorBody);
             throw new InvalidOperationException($"Ollama API error: {response.StatusCode} - {errorBody}");
         }
 

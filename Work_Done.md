@@ -1,278 +1,517 @@
-# Work_Done.md — LearnifyAI Progress Diary
+﻿## Audit Results â€” 2026-06-03
 
-> Last Updated: 5/23/2026, 10:46 PM (Asia/Dhaka, UTC+6:00)
+### Summary
+| Category | Complete | Partial | Not Started |
+|----------|----------|---------|-------------|
+| Auth & Users | 3 | 1 | 3 |
+| Course Management | 3 | 2 | 3 |
+| Notes & Content | 4 | 2 | 4 |
+| AI Features | 3 | 2 | 6 |
+| Flashcard System | 3 | 0 | 6 |
+| Quiz System | 6 | 0 | 11 |
+| Study Planner | 0 | 0 | 6 |
+| Progress & Analytics | 0 | 0 | 6 |
+| Achievement System | 0 | 0 | 5 |
+| Dashboard | 2 | 1 | 5 |
+| Settings | 0 | 1 | 6 |
+| Infrastructure/UI | 2 | 3 | 2 |
+| **TOTAL** | **26** | **12** | **52** |
+
+> Audit performed by scanning actual file content â€” not milestone plans.
+
+---
+
+## Runtime Verification Update - 2026-06-03
+
+### SQL Server Startup/Auth Root Cause
+- `Learnify.Web` uses `ConnectionStrings:DefaultConnection` and applies EF migrations at startup via `Database.Migrate()`.
+- LocalDB is not usable on this machine: `sqllocaldb` only reported a broken `v11.0` automatic instance, and creating `MSSQLLocalDB` failed.
+- SQL Server Express is installed and Windows-auth only (`IsIntegratedSecurityOnly = 1`), with the app database already present as `LearnPlatformDb`.
+- Base config without `Encrypt=False` can fail with a local encryption error; Development config now provides an explicit SQLEXPRESS connection with `TrustServerCertificate=True;Encrypt=False`.
+- Sandboxed command execution can still trigger `Failed to generate SSPI context`; running `dotnet run` normally outside the sandbox successfully starts the API and applies migrations.
+
+### Files Changed For Runtime + Local Provider
+- `Learnify.Web/appsettings.json` - removed committed Gemini API key, kept Gemini default/model, changed Ollama BaseUrl to `http://127.0.0.1:8080`.
+- `Learnify.Web/appsettings.Development.json` - added explicit SQLEXPRESS development connection string and local Ollama BaseUrl/model.
+- `Learnify.Web/Program.cs` - added development console/debug logging, safer DB migration diagnostics, and `UseAuthentication()`.
+- `Learnify.Web/Controllers/AiController.cs` - added normalized provider settings and `POST /api/ai/provider/test`.
+- `Learnify.Infrastructure/DependencyInjection.cs`, `AiProviderFactory.cs`, `UserAiSettingsStore.cs`, `AiSettings.cs` - default Ollama BaseUrl now `http://127.0.0.1:8080`; added separate `LocalOpenAI` provider support for OpenAI-compatible llama.cpp servers.
+- `Learnify.Infrastructure/AI/Providers/LocalOpenAiProvider.cs` - added local `/v1/chat/completions` provider with optional bearer token support.
+- `Learnify.Infrastructure/Migrations/20260603230545_AddLocalOpenAiProvider.cs` - added nullable `UserAiSettings.LocalOpenAiBaseUrl`.
+- `Learnify.Client/src/services/aiService.ts` - normalized backend `provider` response to frontend `activeProvider`.
+- `Learnify.Client/src/components/AI/AiProviderBadge.tsx` - distinguishes `Ollama` from `Local OpenAI / llama.cpp` and shows local base URL when selected.
+- `Learnify.Client/src/components/AI/AiProviderSettings.tsx` - adds separate `Local OpenAI-Compatible / llama.cpp` option with `http://127.0.0.1:8080` and `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` defaults.
+- `Learnify.Client/src/pages/Settings.tsx`, `App.tsx`, `Navbar.tsx` - added protected `/settings` route and nav link.
+
+### Verification Results
+- `dotnet build --no-restore` - passed with 0 errors; existing package/security warnings remain.
+- `npm run build` in `Learnify.Client` - passed with 0 errors.
+- `dotnet test --no-restore` - passed.
+- `dotnet ef migrations add AddLocalOpenAiProvider --project Learnify.Infrastructure --startup-project Learnify.Web` - passed.
+- `dotnet ef database update --project Learnify.Infrastructure --startup-project Learnify.Web` - applied `20260603230545_AddLocalOpenAiProvider`.
+- `dotnet run --project Learnify.Web --no-build --launch-profile http` - backend started successfully outside the command sandbox and listened on `http://localhost:5073`.
+- Auth-protected endpoints verified: unauthenticated `GET /api/ai/provider` and `GET /api/courses` returned 401.
+- Registration/login verified with a fresh test user; JWT was issued.
+- New-user empty courses state verified: `GET /api/courses` returned 0 courses.
+- Course create/edit/delete verified through live API.
+- `GET /api/ai/provider` verified default Gemini response: `Gemini` / `gemini-3.5-flash`.
+- `POST /api/ai/summarize` verified through Learnify API using Gemini; returned a generated summary.
+- `POST /api/ai/flashcards` verified through Learnify API using Gemini; returned 3 cards with populated `question`/`answer` fields after the parser/prompt alignment fix.
+- Persistent `GET/PUT /api/user/ai-settings` verified: default Gemini returns `gemini-3.5-flash`, saved Gemini never returns the raw key, saved Ollama keeps `http://127.0.0.1:8080`.
+- Direct `POST /api/notes/upload` verified with `.txt` multipart upload: returned 201 and stored extracted text in `Note.Content`.
+- Local LLaMA retest 2026-06-04: added separate protocol support for `Ollama` (`/api/*`) and `LocalOpenAI` (`/v1/*`).
+- Direct local server probe confirmed `http://127.0.0.1:8080/v1/models` and `/v1/chat/completions` work with `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`.
+- Ollama remains separate: saved provider `Ollama` still uses `/api/tags` and `/api/generate`.
+- LocalOpenAI settings verified: saved provider `LocalOpenAI`, model `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, BaseUrl `http://127.0.0.1:8080`, and raw API keys are not returned.
+- LocalOpenAI runtime generation verified through Learnify: summarize, flashcards, quiz generation, and generated quiz submission all passed.
+
+### Local Setup Commands
+```bash
+dotnet user-secrets set "AiSettings:Gemini:ApiKey" "YOUR_KEY" --project Learnify.Web
+dotnet ef database update --project Learnify.Infrastructure --startup-project Learnify.Web
+dotnet run --project Learnify.Web --launch-profile http
+```
+
+---
+
+# Work_Done.md â€” LearnifyAI Progress Diary
+
+> Last Updated: 2026-06-03 (Asia/Dhaka, UTC+6:00)
 
 ---
 
 ## Verification Status
 
-### Milestone 1 (Backend Core/Entities) — ✅ CONFIRMED FUNCTIONAL
-- `Learnify.Core/Entities/BaseEntity.cs` — Guid Id, CreatedAt, UpdatedAt ✅
-- `Learnify.Core/Entities/User.cs` — FullName, Email, PasswordHash, PasswordSalt, Role, IsActive ✅
-- `Learnify.Core/Entities/Course.cs` — Title, Description, UserId FK ✅
-- `Learnify.Core/Entities/Note.cs` — Content, CourseId FK ✅
-- `Learnify.Core/Entities/Lesson.cs` — Title, Content, CourseId FK ✅
-- `Learnify.Infrastructure/Data/ApplicationDbContext.cs` — DbSet + Configurations ✅
-- `Learnify.Infrastructure/Repositories/EfRepository.cs` — Generic CRUD ✅
-- `Learnify.Infrastructure/Repositories/CourseRepository.cs` ✅
-- `Learnify.Infrastructure/Repositories/NoteRepository.cs` ✅
-- `Learnify.Infrastructure/Repositories/UserRepository.cs` ✅
-- `Learnify.Infrastructure/Repositories/LessonRepository.cs` ✅
-- `Learnify.Infrastructure/UnitOfWork/UnitOfWork.cs` ✅
-- `Learnify.Core/Interfaces/IRepository.cs` ✅
-- `Learnify.Core/Interfaces/IUserRepository.cs` ✅
-- `Learnify.Core/Interfaces/ICourseRepository.cs` ✅
-- `Learnify.Core/Interfaces/INoteRepository.cs` ✅
-- `Learnify.Core/Interfaces/ILessonRepository.cs` ✅
-- `Learnify.Core/Interfaces/IUnitOfWork.cs` ✅
-- `Learnify.Infrastructure/Migrations/` — EF Core migrations present ✅
+### M1-M6 Checkpoint Audit - 2026-06-03 - READY_FOR_M7
 
-### Milestone 2 (Auth/JWT/API Security) — ✅ CONFIRMED FUNCTIONAL
-- `Learnify.Application/Interfaces/IAuthService.cs` — Auth service contract ✅
-- `Learnify.Application/Services/AuthService.cs` — Register/Login/Refresh implementation ✅
-- `Learnify.Application/DTOs/AuthDTOs.cs` — LoginDTO, RegisterDTO, AuthResponseDTO ✅
-- `Learnify.Web/Controllers/AuthController.cs` — /api/auth/register, /login, /refresh ✅
-- `Learnify.Web/Config/JwtSettings.cs` — JWT configuration ✅
-- `Learnify.Web/Program.cs` — JWT bearer auth middleware configured ✅
-- `Learnify.Application/ApiResponse.cs` — Standardized API response wrapper ✅
-- `Learnify.Web/Middleware/GlobalExceptionMiddleware.cs` — Global error handling ✅
-- `Learnify.Web/Validators/UserValidator.cs` — FluentValidation ✅
-- `Learnify.Web/Controllers/UsersController.cs` — User CRUD ✅
-- `Learnify.Web/Controllers/CoursesController.cs` — Course CRUD ✅
-- `Learnify.Web/Controllers/LessonsController.cs` — Lesson CRUD ✅
+| Milestone | Status | Evidence |
+|-----------|--------|----------|
+| M1 - Backend Foundation | PASS | `dotnet build --no-restore` passed; EF database update reported no pending migrations; runtime startup applied migrations successfully. |
+| M2 - Auth/JWT/API Security | PASS | Live API register, login, refresh, JWT-protected access, and unauthenticated 401 checks passed. |
+| M3 - Frontend Integration/UI | PASS | `npm run build` in `Learnify.Client` passed; static inspection confirms protected routes and single-retry Axios refresh handling. |
+| M4 - Background Services | PASS | `dotnet test --no-restore` passed; NotificationWorker/EmailNotificationService compile and hosted services did not block HTTP startup. |
+| M5 - AI Integration | PASS_WITH_CAVEAT | Gemini default `gemini-3.5-flash`, provider status, summarize, and flashcards passed through Learnify API; a direct probe previously showed `http://127.0.0.1:8080` serving an OpenAI-compatible llama.cpp API, and Learnify now has a separate `LocalOpenAI` provider for that protocol. |
+| M6R - Smart Learning Core Closeout | PASS_WITH_CAVEAT | New-user empty courses, course CRUD/detail, AI settings, `.txt/.md` note upload, global AI badge, settings UI, and flashcard viewer controls verified; PDF extraction remains partial. |
 
-### Milestone 3 (Full-Stack Integration & UI) — ✅ CONFIRMED FUNCTIONAL
-- `Learnify.Client/.env` — VITE_API_BASE_URL configured ✅
-- `Learnify.Client/src/services/api.ts` — Axios instance with JWT interceptors ✅
-- `Learnify.Client/src/services/authService.ts` — Login/Register/Logout service ✅
-- `Learnify.Client/src/store/authStore.ts` — Zustand auth state management ✅
-- `Learnify.Client/src/components/PrivateRoute.tsx` — Route guard ✅
-- `Learnify.Client/src/pages/Login.tsx` — Login page ✅
-- `Learnify.Client/src/pages/Register.tsx` — Register page ✅
-- `Learnify.Client/src/pages/Courses.tsx` — Dashboard with course grid ✅
-- `Learnify.Client/src/App.tsx` — React Router v7 setup with protected routes ✅
-- `Learnify.Client/` — Build verified (tsc + vite build) ✅
+### Milestone 1 â€” Backend Foundation â€” âœ… CONFIRMED FUNCTIONAL
+- `Learnify.Core/Entities/BaseEntity.cs` â€” Guid Id, CreatedAt, UpdatedAt âœ…
+- `Learnify.Core/Entities/User.cs` â€” FullName, Email, PasswordHash, PasswordSalt, IsActive âœ…
+- `Learnify.Core/Entities/Course.cs` â€” Title, Description, UserId FK âœ…
+- `Learnify.Core/Entities/Note.cs` â€” Content, CourseId FK âœ…
+- `Learnify.Core/Entities/Lesson.cs` â€” Title, Content, CourseId FK âœ…
+- `Learnify.Infrastructure/Data/ApplicationDbContext.cs` â€” DbSet + Configurations âœ…
+- `Learnify.Infrastructure/Repositories/EfRepository.cs` â€” Generic CRUD âœ…
+- `Learnify.Infrastructure/Repositories/CourseRepository.cs` âœ…
+- `Learnify.Infrastructure/Repositories/NoteRepository.cs` âœ…
+- `Learnify.Infrastructure/Repositories/UserRepository.cs` âœ…
+- `Learnify.Infrastructure/Repositories/LessonRepository.cs` âœ…
+- `Learnify.Infrastructure/UnitOfWork/UnitOfWork.cs` âœ…
+- `Learnify.Core/Interfaces/IRepository.cs` âœ…
+- `Learnify.Core/Interfaces/IUserRepository.cs` âœ…
+- `Learnify.Core/Interfaces/ICourseRepository.cs` âœ…
+- `Learnify.Core/Interfaces/INoteRepository.cs` âœ…
+- `Learnify.Core/Interfaces/ILessonRepository.cs` âœ…
+- `Learnify.Core/Interfaces/IUnitOfWork.cs` âœ…
+- `Learnify.Infrastructure/Migrations/` â€” EF Core migrations present âœ…
 
-### Milestone 3 - Quality Assurance — ✅ QA VERIFIED
-- **QA Verified: Routing logic, loading states, and build stability confirmed.** — 5/23/2026
-- **PrivateRoute.tsx Audit:** ✅ No infinite redirect loop — redirects to `/login` which is NOT a protected route. Unauthenticated users are correctly redirected.
-- **authStore.ts Audit:** ✅ `isAuthenticated` properly set on login/register/logout. `loadUser()` correctly reads from localStorage.
-- **Courses.tsx Audit:** ✅ Loading state with spinner (lines 57-65). ✅ Empty state with info alert when no courses (lines 80-83). ✅ Error state with danger alert (lines 74-78). ✅ Handles null/undefined API responses gracefully.
-- **App.tsx Audit:** ✅ Protected routes wrapped in PrivateRoute. ✅ `/login` and `/register` are public routes — no redirect loop.
-- **Bug Fix Applied:** ✅ Fixed JSON property naming mismatch — Backend `ApiResponse<T>` uses PascalCase (`Success`, `Data`, `Errors`) but frontend expects camelCase. Added `AddJsonOptions` with `CamelCase` naming policy to `Program.cs` (line 24-28).
-- **Backend Build:** ✅ `dotnet build --no-restore` — 0 errors, 20 warnings (nuget vulnerability warnings only).
-- **Frontend Build:** ✅ `npm run build` (tsc + vite build) — 0 errors, 86 modules transformed.
+### Milestone 2 â€” Auth/JWT/API Security â€” âœ… CONFIRMED FUNCTIONAL
+- `Learnify.Application/Interfaces/IAuthService.cs` âœ…
+- `Learnify.Application/Services/AuthService.cs` â€” Register/Login/Refresh âœ…
+- `Learnify.Application/DTOs/AuthDTOs.cs` â€” LoginDTO, RegisterDTO, AuthResponseDTO âœ…
+- `Learnify.Web/Controllers/AuthController.cs` â€” `/api/auth/register`, `/login`, `/refresh` âœ…
+- `Learnify.Web/Config/JwtSettings.cs` âœ…
+- `Learnify.Web/Program.cs` â€” JWT bearer auth middleware âœ…
+- `Learnify.Application/ApiResponse.cs` â€” Standardized API response wrapper âœ…
+- `Learnify.Web/Middleware/GlobalExceptionMiddleware.cs` âœ…
+- `Learnify.Web/Validators/UserValidator.cs` â€” FluentValidation âœ…
+- `Learnify.Web/Controllers/UsersController.cs` âœ…
+- `Learnify.Web/Controllers/CoursesController.cs` âœ…
+- `Learnify.Web/Controllers/LessonsController.cs` âœ…
 
-### Milestone 4 — Background Services — ✅ CONFIRMED FUNCTIONAL (COMPLETE)
-- `Learnify.Core/Interfaces/INotificationService.cs` — Notification service contract with SendEmailNotificationAsync, SendSMSNotificationAsync, SendPushNotificationAsync ✅
-- `Learnify.Infrastructure/Services/EmailNotificationService.cs` — Email notification service with Channel<NotificationMessage> queue processing ✅
-- `Learnify.Web/Workers/NotificationWorker.cs` — Background worker with Channel<T> for async notification processing ✅
-- `Learnify.Tests/NotificationWorkerTests.cs` — 7 unit tests for channel queue processing (all passing) ✅
-- `Learnify.Application/DTOs/NotificationMessage.cs` — Notification message DTO with metadata support ✅
-- `Learnify.Web/Program.cs` — CORS policy (LearnifyPolicy) configured for frontend port 5173 ✅
-- **Integration Verification (5/23/2026):**
-  - NotificationWorker registered as HostedService via `AddHostedService<NotificationWorker>()` ✅
-  - INotificationService injected into UsersController — fire-and-forget `QueueNotificationAsync` does NOT block HTTP thread (returns 201 Created immediately) ✅
-  - CORS configured: `app.UseCors("LearnifyPolicy")` before `UseRouting()` — allows `http://localhost:5173` with credentials ✅
-  - Build: `dotnet build --no-restore` — 0 errors, 20 warnings (nuget vulnerability warnings only) ✅
-  - Tests: `dotnet test Learnify.Tests` — Passed: 7, Failed: 0, Total: 7 ✅
-- **Bug Fixes Applied:**
-  - Added `Category` property to `CourseDTO` — fixed CoursesController CS1061 error ✅
-  - Added `ApiResponse.Ok(object? data, string? message)` overload — fixed CoursesController CS1501 error ✅
-  - Fixed `NotificationWorkerTests.cs` — added `using System.Threading.Channels` and changed `DisplayType` to `DisplayName` on `[Fact]` attributes ✅
+### Milestone 3 â€” Full-Stack Integration & UI â€” âœ… CONFIRMED FUNCTIONAL
+- `Learnify.Client/.env` â€” VITE_API_BASE_URL configured âœ…
+- `Learnify.Client/src/services/api.ts` â€” Axios instance with JWT interceptors âœ…
+- `Learnify.Client/src/services/authService.ts` â€” Login/Register/Logout âœ…
+- `Learnify.Client/src/store/authStore.ts` â€” Zustand auth state âœ…
+- `Learnify.Client/src/components/PrivateRoute.tsx` â€” Route guard âœ…
+- `Learnify.Client/src/pages/Login.tsx` âœ…
+- `Learnify.Client/src/pages/Register.tsx` âœ…
+- `Learnify.Client/src/pages/Courses.tsx` â€” Dashboard with course grid âœ…
+- `Learnify.Client/src/App.tsx` â€” React Router v7, protected routes âœ…
+- Build verified: tsc + vite build â€” 0 errors âœ…
 
-### Milestone 5 — AI Integration (Multi-Provider Architecture) — ✅ CONFIRMED FUNCTIONAL (COMPLETE)
-- **Provider Architecture — Strategy Pattern:**
-  - `Learnify.Core/Interfaces/IAiProvider.cs` — Core contract with `CompleteAsync()` and `ProviderName` ✅
-  - `Learnify.Core/Interfaces/IAiService.cs` — High-level service with Summarize, Flashcards, StudyTips ✅
-  - `Learnify.Core/Models/AiRequestOptions.cs` — Temperature, MaxTokens configuration ✅
-  - `Learnify.Core/Models/FlashcardResult.cs` — Question/Answer record ✅
-  - `Learnify.Application/Settings/AiSettings.cs` — Strongly-typed config (Gemini, OpenAI, Ollama, Claude nested classes) ✅
-  - `Learnify.Infrastructure/AI/AiProviderFactory.cs` — Factory pattern with `IEnumerable<IAiProvider>` resolution ✅
+### Milestone 3 â€” QA Verified â€” âœ…
+- PrivateRoute: no infinite redirect loops âœ…
+- authStore: `isAuthenticated` properly set on login/logout âœ…
+- Courses.tsx: loading, empty, and error states all handled âœ…
+- JSON camelCase naming policy fixed in `Program.cs` âœ…
+- Backend build: 0 errors, 20 warnings (nuget vulnerability â€” not blocking) âœ…
+- Frontend build: 0 errors, 86 modules transformed âœ…
 
-- **Provider Implementations:**
-  - `Learnify.Infrastructure/AI/Providers/GeminiAiProvider.cs` — Google Gemini (gemini-1.5-flash, free REST API) ✅
-  - `Learnify.Infrastructure/AI/Providers/OpenAiProvider.cs` — OpenAI (GPT-4o-mini, Bearer token auth) ✅
-  - `Learnify.Infrastructure/AI/Providers/OllamaAiProvider.cs` — Ollama (local, no auth, streaming=false) ✅
-  - `Learnify.Infrastructure/AI/Providers/ClaudeAiProvider.cs` — Anthropic Claude (x-api-key + anthropic-version headers) ✅
+### Milestone 4 â€” Background Services â€” âœ… CONFIRMED FUNCTIONAL
+- `Learnify.Core/Interfaces/INotificationService.cs` âœ…
+- `Learnify.Infrastructure/Services/EmailNotificationService.cs` â€” Channel<T> queue âœ…
+- `Learnify.Web/Workers/NotificationWorker.cs` â€” HostedService âœ…
+- `Learnify.Tests/NotificationWorkerTests.cs` â€” 7 tests, all passing âœ…
+- `Learnify.Application/DTOs/NotificationMessage.cs` âœ…
+- CORS: `LearnifyPolicy` for `http://localhost:5173` âœ…
+- NotificationWorker: fire-and-forget â€” does NOT block HTTP thread âœ…
+- Build: 0 errors âœ… Â· Tests: Passed 7 / Failed 0 âœ…
 
-- **Application Layer — DTOs:**
-  - `Learnify.Application/DTOs/AI/SummarizeNoteRequest.cs` / `SummarizeNoteResponse.cs` ✅
-  - `Learnify.Application/DTOs/AI/FlashcardRequest.cs` / `FlashcardResponse.cs` / `FlashcardItem.cs` ✅
-  - `Learnify.Application/DTOs/AI/StudyTipsRequest.cs` / `StudyTipsResponse.cs` ✅
-
-- **Infrastructure — Service & DI:**
-  - `Learnify.Infrastructure/AI/AiService.cs` — IAiService implementation with educational prompts ✅
-  - `Learnify.Infrastructure/DependencyInjection.cs` — All 4 providers registered as scoped ✅
-  - `Learnify.Web/Program.cs` — `AddInfrastructure()` called with AI settings ✅
-
-- **API Controller:**
-  - `Learnify.Web/Controllers/AiController.cs` — 5 endpoints (summarize, flashcards, study-tips, provider info) ✅
-  - `[Authorize]` on all endpoints, `[ApiController]`, `[Route("api/[controller]")]` ✅
-  - Try/catch error handling with ILogger, user-friendly 500 responses ✅
-
-- **React Frontend:**
-  - `Learnify.Client/src/services/aiService.ts` — Axios calls to all 4 AI endpoints with full typing ✅
-  - `Learnify.Client/src/components/AI/NoteSummarizer.tsx` — Summarize button, loading spinner, styled card ✅
-  - `Learnify.Client/src/components/AI/FlashcardViewer.tsx` — Flip-card UI with CSS animation, navigation, progress ✅
-  - `Learnify.Client/src/components/AI/StudyTips.tsx` — Skeleton loader, styled tips list ✅
-  - `Learnify.Client/src/components/AI/AiProviderBadge.tsx` — Provider detection with matching icons/colors ✅
-  - `Learnify.Client/src/pages/Notes/NoteDetail.tsx` — Integrated NoteSummarizer, FlashcardViewer, StudyTips ✅
-
-- **Configuration:**
-  - `Learnify.Web/appsettings.json` — Full AiSettings block with all 4 providers, ActiveProvider = "Gemini" ✅
-  - `Learnify.Web/appsettings.Development.json` — User secrets note ✅
-  - API keys never hardcoded — always from IConfiguration/IOptions ✅
+### Milestone 5 â€” AI Integration (Multi-Provider) â€” âœ… CONFIRMED FUNCTIONAL
+- `Learnify.Core/Interfaces/IAiProvider.cs` â€” Strategy contract âœ…
+- `Learnify.Core/Interfaces/IAiService.cs` â€” Summarize, Flashcards, StudyTips âœ…
+- `Learnify.Core/Models/AiRequestOptions.cs` âœ…
+- `Learnify.Core/Models/FlashcardResult.cs` âœ…
+- `Learnify.Application/Settings/AiSettings.cs` âœ…
+- `Learnify.Infrastructure/AI/AiProviderFactory.cs` â€” Strategy pattern âœ…
+- `Learnify.Infrastructure/AI/Providers/GeminiAiProvider.cs` â€” (`gemini-3.5-flash`) âœ…
+- `Learnify.Infrastructure/AI/Providers/OpenAiProvider.cs` âœ…
+- `Learnify.Infrastructure/AI/Providers/OllamaAiProvider.cs` âœ…
+- `Learnify.Infrastructure/AI/Providers/ClaudeAiProvider.cs` âœ…
+- `Learnify.Infrastructure/AI/AiService.cs` âœ…
+- `Learnify.Infrastructure/DependencyInjection.cs` â€” all 4 providers registered âœ…
+- `Learnify.Web/Controllers/AiController.cs` â€” 5 endpoints, all `[Authorize]` âœ…
+- `Learnify.Client/src/services/aiService.ts` âœ…
+- `Learnify.Client/src/components/AI/NoteSummarizer.tsx` âœ…
+- `Learnify.Client/src/components/AI/FlashcardViewer.tsx` âœ…
+- `Learnify.Client/src/components/AI/StudyTips.tsx` âœ…
+- `Learnify.Client/src/components/AI/AiProviderBadge.tsx` âœ…
+- `Learnify.Client/src/pages/Notes/NoteDetail.tsx` âœ…
+- `Learnify.Web/appsettings.json` â€” AiSettings block, ActiveProvider = "Gemini" âœ…
 
 ---
 
-## Completed Tasks
+## Milestone 6 - Smart Learning Core - M6R VERIFIED
 
-### Milestone 1 — Backend Foundation
-- [x] 1.1 Solution Scaffolding — 4-project Clean Architecture (Learnify.Core, Application, Infrastructure, Web) — 5/22/2026
-- [x] 1.2 Domain Entities — BaseEntity, User, Course, Note, Lesson — 5/22/2026
-- [x] 1.3 Database Infrastructure — ApplicationDbContext, EF Core, SQL Server — 5/22/2026
-- [x] 1.4 Repositories & Unit of Work — EfRepository, specialized repos, UnitOfWork — 5/22/2026
-- [x] 1.5 API Controllers & DTOs — AuthController, UsersController, CoursesController, LessonsController — 5/22/2026
-- [x] 1.6 Middleware & Validation — GlobalExceptionMiddleware, UserValidator, ApiResponse — 5/22/2026
-- [x] 1.7 Seed Data & Migration — EF Core migration InitialCreate — 5/22/2026
-- [x] 1.8 AutoMapper Profiles — MappingProfile for DTO mapping — 5/22/2026
+### 6.1 â€” Remove Seed Data (New User Empty State)
 
-### Milestone 2 — Authentication & Authorization
-- [x] JWT configuration with JwtSettings — 5/22/2026
-- [x] IAuthService + AuthService (Register/Login/RefreshToken) — 5/22/2026
-- [x] AuthController with /api/auth/register, /login, /refresh — 5/22/2026
-- [x] Password hashing with byte[] PasswordHash/PasswordSalt — 5/22/2026
-- [x] Role-based access (Student/Instructor/Admin) — 5/22/2026
+**Goal:** A newly registered user must see 0 courses â€” no pre-seeded demo data.  
+**Problem:** `ApplicationDbContext.OnModelCreating()` (or a seeder class) inserts 3 sample courses at startup. All new users see these courses, which is incorrect.
 
-### Milestone 3 — Full-Stack Integration & UI
-- [x] Configure Learnify.Client/.env with VITE_API_BASE_URL — 5/23/2026
-- [x] Implement api.ts with Axios interceptors (JWT inject + 401 handling) — 5/23/2026
-- [x] Implement authService.ts (Login/Register/Logout/Token management) — 5/23/2026
-- [x] Implement authStore.ts with Zustand (global auth state) — 5/23/2026
-- [x] Create PrivateRoute.tsx (route guard component) — 5/23/2026
-- [x] Create Login.tsx (auth form with email/password) — 5/23/2026
-- [x] Create Register.tsx (auth form with name/email/password) — 5/23/2026
-- [x] Create Courses.tsx (dashboard grid fetching from /api/courses) — 5/23/2026
-- [x] Update App.tsx (React Router v7 with /login, /register, /dashboard routes) — 5/23/2026
-- [x] Frontend build verified (tsc + vite build passed) — 5/23/2026
+- [x] Remove all `HasData()` calls seeding `Course` records from `ApplicationDbContext.cs`
+- [x] Search for and delete any `DataSeeder.cs`, `SeedData.cs`, or `DbInitializer.cs` that inserts course or user records (preserve schema-only migrations)
+- [x] Remove any seeder invocations from `Learnify.Web/Program.cs`
+- [x] Update empty-state message in `Courses.tsx` to: *"You have no courses yet. Click 'New Course' to get started."*
+  - Runtime verified 2026-06-03: `Courses.tsx` contains the exact empty-state text.
+- [x] Verify: register a new account -> Courses page shows empty state, 0 courses
+  - Runtime verified 2026-06-03: live `GET /api/courses` for a fresh user returned 0 courses.
 
-### Milestone 4 — Background Services
-- [x] Notification background service — COMPLETED — 5/23/2026
-- [x] Email notification service — COMPLETED — 5/23/2026
-- [x] Unit tests for channel queue processing (7 tests) — COMPLETED — 5/23/2026
-- [x] CORS configuration for frontend-backend communication — COMPLETED — 5/23/2026
-- [x] Integration verification (HostedService registration, fire-and-forget API, CORS middleware) — COMPLETED — 5/23/2026
+---
 
-### Milestone 5 — AI Integration (Multi-Provider Architecture)
-- [x] 5.1 Core Contracts & DTOs — IAiProvider, IAiService, FlashcardResult, AiRequestOptions, AiSettings — 5/23/2026
-- [x] 5.2 Application DTOs — Summarize, Flashcard, StudyTips request/response DTOs — 5/23/2026
-- [x] 5.3 Provider Implementations — Gemini, OpenAI, Ollama, Claude (4 providers) — 5/23/2026
-- [x] 5.4 AiProviderFactory — Strategy pattern with DI resolution — 5/23/2026
-- [x] 5.5 AiService — High-level service with educational prompts — 5/23/2026
-- [x] 5.6 DependencyInjection — All 4 providers registered as scoped — 5/23/2026
-- [x] 5.7 AiController — 5 REST endpoints (summarize, flashcards, study-tips, provider) — 5/23/2026
-- [x] 5.8 appsettings.json — AiSettings block with all providers, Gemini as default — 5/23/2026
-- [x] 5.9 Frontend aiService.ts — Axios calls to all 4 AI endpoints — 5/23/2026
-- [x] 5.10 Frontend NoteSummarizer.tsx — Summarize button with loading spinner — 5/23/2026
-- [x] 5.11 Frontend FlashcardViewer.tsx — Flip-card UI with CSS animation — 5/23/2026
-- [x] 5.12 Frontend StudyTips.tsx — Skeleton loader, styled tips list — 5/23/2026
-- [x] 5.13 Frontend AiProviderBadge.tsx — Provider detection with icons — 5/23/2026
-- [x] 5.14 Frontend NoteDetail.tsx — Integrated AI tools below note content — 5/23/2026
+### 6.2 â€” Course Management (Add & Delete)
+
+**Goal:** Users can create new courses and delete existing ones from the dashboard.
+
+**Backend:**
+- [x] Add `POST /api/courses` endpoint â€” create course for the currently authenticated user (read `UserId` from JWT claims, not request body)
+- [x] Add `DELETE /api/courses/{id}` endpoint â€” delete course only if `UserId` matches authenticated user (return 403 if not owner)
+- [x] Add `CreateCourseDto` with `Title` (required, max 100 chars) and `Description` (optional, max 500 chars)
+- [x] Return `201 Created` with created course on POST; `204 No Content` on DELETE
+- [x] Add ownership validation â€” a user cannot delete another user's course
+
+**Frontend:**
+- [x] Add "New Course" button to the top-right of `Courses.tsx`
+- [x] On click, show a modal dialog with Title and Description inputs
+- [x] On submit, call `POST /api/courses`, close modal, refresh course list
+- [x] Add a delete icon/button on each course card
+- [x] On delete click, show a confirmation dialog: *"Delete [Course Name]? This cannot be undone."*
+- [x] On confirm, call `DELETE /api/courses/{id}`, remove card from list without full page reload
+
+---
+
+### 6.3 â€” Upgrade Default Gemini Model to `gemini-3.5-flash`
+
+**Goal:** Replace the outdated Gemini Flash model with `gemini-3.5-flash` as the default model.
+
+- [x] Update `Learnify.Infrastructure/AI/Providers/GeminiAiProvider.cs` â€” use configured model `"gemini-3.5-flash"`
+- [x] Update `Learnify.Web/appsettings.json` â€” set `"Model": "gemini-3.5-flash"` under `AiSettings:Gemini`
+- [x] Update `Learnify.Client/src/components/AI/AiProviderBadge.tsx` â€” update display label for Gemini to show `"Gemini 3.5 Flash"`
+- [x] Verify: call `/api/ai/provider` endpoint and confirm response shows `"gemini-3.5-flash"`
+  - Runtime verified 2026-06-03: live `GET /api/ai/provider` returned provider `Gemini`, model `gemini-3.5-flash`.
+  - Runtime verified 2026-06-03: live `POST /api/ai/summarize` returned a Gemini-generated summary through the Learnify API.
+
+> **Runtime note:** Direct Google Gemini REST probe with `gemini-3.5-flash` returned HTTP 200 on 2026-06-03; Learnify summarize and flashcard calls also passed when the API process had outbound network access.
+
+---
+
+### 6.4 â€” Per-User AI Provider Settings (Backend)
+
+**Goal:** Each user can store their preferred AI provider and API key in their account, replacing server-wide config.
+
+- [x] Create `Learnify.Core/Entities/UserAiSettings.cs` â€” properties: `Id`, `UserId` (FK), `ActiveProvider` (string), `ApiKey` (string, nullable), `CustomModel` (string, nullable), `OllamaBaseUrl` (string, nullable)
+- [x] Add `DbSet<UserAiSettings>` to `ApplicationDbContext` + EF configuration (one-to-one with User)
+- [x] Create and apply EF Core migration: `AddUserAiSettings`
+- [x] Create `IUserAiSettingsRepository` and `UserAiSettingsRepository`
+- [x] Create `UserAiSettingsController` with:
+  - `GET /api/user/ai-settings` â€” return current user's AI settings (return default Gemini config if none saved)
+  - `PUT /api/user/ai-settings` â€” save/update user's AI settings
+- [x] Update `AiProviderFactory` to accept per-request `UserAiSettings` override (fall back to `appsettings.json` if no user settings)
+- [x] Update `AiController` to resolve the requesting user's settings and pass them to the factory
+- [x] **Security:** Never return the raw `ApiKey` value in GET responses â€” return only provider name and whether a key is set (`HasApiKey: true/false`)
+  - Runtime verified 2026-06-03: default Gemini, saved Gemini, saved Ollama/local LLaMA, and safe no-raw-key responses all passed.
+
+---
+
+### 6.5 â€” Per-User AI Provider Settings (Frontend)
+
+**Goal:** Settings page where users pick their AI provider and optionally enter their own API key.
+
+- [x] Create `Learnify.Client/src/pages/Settings.tsx`
+- [x] Add route `/settings` to `App.tsx` (protected)
+- [x] Add "Settings" link to nav/header
+- [x] Settings page contains an "AI Provider" card with:
+  - Dropdown to choose provider: Gemini / OpenAI / Claude / Ollama
+  - Text input for API key (masked, placeholder: *"Enter your API key"*) â€” hidden for Ollama
+  - Text input for Ollama Base URL (only shown when Ollama selected)
+  - "Save Settings" button
+- [x] On load, call `GET /api/user/ai-settings` and populate fields
+- [x] On save, call `PUT /api/user/ai-settings`
+- [x] Show success/error message on save
+- [x] Display a badge in the global protected navigation showing the currently active provider
+  - Runtime note: `/settings` persists provider settings; local LLaMA switching was verified with `http://127.0.0.1:8080`.
+
+---
+
+### 6.6 â€” Note File Upload System
+
+- [x] Add `POST /api/notes/upload` endpoint â€” accept `.txt` and `.md` files (max 2MB)
+- [x] Extract plain text from uploaded file; store as `Note.Content`
+- [x] Add direct upload UI to `NotesList.tsx` alongside the existing AI analyze upload flow
+- [x] Runtime verified 2026-06-03: `.txt` and `.md` multipart uploads returned 201 and persisted uploaded text.
+  - PDF parsing remains partial through `POST /api/notes/analyze-upload`; no real PDF text extraction was added in M6R.
+
+---
+
+### 6.7 â€” Modern Flashcard UI Redesign
+
+- [x] Redesign `FlashcardViewer.tsx` with:
+  - Smooth 3D CSS flip animation (front = Question, back = Answer)
+  - Progress indicator: `Card 3 of 12`
+  - Keyboard navigation: `â†` / `â†’` to navigate, `Space` to flip
+  - "Shuffle" button
+  - Score tracking (mark card as "Got it" / "Review again")
+- [x] Runtime verified 2026-06-03: Gemini flashcards returned populated `question`/`answer` values through `/api/ai/flashcards`.
+  - Spaced repetition scheduling and review history remain future M7+ work.
+
+---
+
+## Milestone 7 - Quiz Engine - CORE FLOW VERIFIED
+
+### Implementation Summary
+
+- Added quiz persistence entities: `Quiz`, `Question`, `QuizAttempt`, and `QuizAttemptAnswer`.
+- Added `AddQuizEngine` EF migration with `Quizzes`, `Questions`, `QuizAttempts`, and `QuizAttemptAnswers`.
+- Added `AddQuizPolishTimer` EF migration with optional `Quizzes.TimeLimitMinutes`.
+- Extended `IAiService` / `AiProviderFactory` with strict JSON quiz generation and parsing.
+- Added `QuizService` for note ownership validation, quiz save/list/detail, attempt submission, scoring, and result mapping.
+- Added authorized quiz endpoints for generate, list, detail, attempts submit, and attempts list.
+- Added protected frontend routes `/quizzes`, `/quizzes/:id`, and `/quizzes/:id/result`.
+- Added Quizzes link in protected navigation.
+- Added M7.1 quiz polish: fill-in-the-blank generation/scoring, practice/exam answer visibility, optional timer, and frontend retry for incorrect answers.
+
+### Files Changed
+
+- `Learnify.Core/Entities/Quiz.cs`
+- `Learnify.Core/Interfaces/IQuizRepository.cs`
+- `Learnify.Core/Interfaces/IQuizAttemptRepository.cs`
+- `Learnify.Core/Interfaces/IUnitOfWork.cs`
+- `Learnify.Core/Interfaces/IAiService.cs`
+- `Learnify.Core/Models/GeneratedQuizResult.cs`
+- `Learnify.Application/DTOs/QuizDTOs.cs`
+- `Learnify.Application/Interfaces/IQuizService.cs`
+- `Learnify.Application/Services/QuizService.cs`
+- `Learnify.Infrastructure/Data/ApplicationDbContext.cs`
+- `Learnify.Infrastructure/AI/AiProviderFactory.cs`
+- `Learnify.Infrastructure/Repositories/QuizRepository.cs`
+- `Learnify.Infrastructure/Repositories/QuizAttemptRepository.cs`
+- `Learnify.Infrastructure/UnitOfWork/UnitOfWork.cs`
+- `Learnify.Infrastructure/Migrations/20260603175058_AddQuizEngine.cs`
+- `Learnify.Infrastructure/Migrations/20260603195335_AddQuizPolishTimer.cs`
+- `Learnify.Web/Controllers/QuizzesController.cs`
+- `Learnify.Web/Program.cs`
+- `Learnify.Client/src/services/quizService.ts`
+- `Learnify.Client/src/pages/Quizzes.tsx`
+- `Learnify.Client/src/pages/QuizTaking.tsx`
+- `Learnify.Client/src/pages/QuizResult.tsx`
+- `Learnify.Client/src/App.tsx`
+- `Learnify.Client/src/components/Layout/Navbar.tsx`
+
+### Verification Commands
+
+- `dotnet build --no-restore` - passed with 0 errors; existing NuGet vulnerability warnings remain.
+- `dotnet test --no-restore` - passed by exit code.
+- `dotnet ef migrations add AddQuizPolishTimer --project Learnify.Infrastructure --startup-project Learnify.Web` - passed.
+- `dotnet ef database update --project Learnify.Infrastructure --startup-project Learnify.Web` - passed after changing optional quiz course/note foreign keys to `NoAction`.
+- `dotnet run --project Learnify.Web --no-build --launch-profile http` - startup held until command timeout; API was then started from the built DLL for runtime smoke tests.
+- `npm run build` in `Learnify.Client` - passed by exit code.
+
+### Runtime Verification - 2026-06-03
+
+- Protected `GET /api/quizzes` returned 401 without JWT.
+- Registered/logged in a fresh test user and received JWT.
+- Created a course and note with enough study content.
+- Generated a quiz from the note using default Gemini (`gemini-3.5-flash`).
+- Generated an M7.1 mixed quiz with multiple choice, true/false, fill-in-the-blank, and short answer.
+- Confirmed quiz was saved and returned by `GET /api/quizzes`.
+- Confirmed `GET /api/quizzes/{id}?includeAnswers=false` hides correct answers for exam mode.
+- Confirmed `GET /api/quizzes/{id}?includeAnswers=true` returns correct answers and explanations for practice mode.
+- Confirmed generated questions had populated question text, correct answers, explanations, and options where applicable.
+- Confirmed fill-in-the-blank generation uses a blank marker (`____`) and scoring trims whitespace / ignores case.
+- Confirmed the optional timer limit is persisted (`timeLimitMinutes = 1`) and frontend timer mode compiles.
+- Submitted a quiz attempt and received score/percentage.
+- Confirmed result details include user answers, correct answers, correctness, points, and explanations.
+- Confirmed result data includes incorrect answers for the frontend Retry Incorrect Questions session.
+- Confirmed `GET /api/quizzes/{id}/attempts` returned the attempt.
+- Confirmed a second user cannot access the first user's quiz (`404`).
+- Added `LocalOpenAI` provider path for llama.cpp/OpenAI-compatible `/v1/*` servers while keeping `Ollama` on `/api/*`.
+- Confirmed Learnify's provider test reports clear protocol-specific results for `Ollama` and `LocalOpenAI`.
+- Confirmed `LocalOpenAI` can be saved with `http://127.0.0.1:8080` and `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, and `GET /api/ai/provider` reports `LocalOpenAI`.
+- Final LocalOpenAI runtime generation completed successfully through Learnify: provider test passed with `compatibleApi=openai`, summarize returned content, flashcards returned 2 cards, quiz generation returned 2 questions, and submitting the generated quiz scored 2/2.
+
+### Completed Quiz Features
+
+- AI-generated quizzes from note content.
+- Multiple choice, true/false, short answer, and fill-in-the-blank questions.
+- Difficulty selection.
+- Optional timer mode.
+- Practice mode with immediate local feedback and explanations.
+- Exam mode with correct answers hidden until submission.
+- Quiz list/detail API and UI.
+- Quiz taking UI.
+- Attempt scoring and percentage calculation.
+- Result breakdown with correct answers and explanations.
+- Retry Incorrect Questions frontend session.
+- Quiz ownership enforcement.
+
+### Remaining Quiz Gaps
+
+- Matching questions.
+- Scenario-based questions.
+- Coding questions.
+- AI-generated hints.
+- Weakness analysis.
+- Related concept questions.
+- Adaptive quiz engine.
+- Quiz analytics dashboard.
 
 ---
 
 ## Planned Tasks
 
-### Milestone 6 — Testing & QA
-- [ ] Unit tests for AI providers (Gemini, OpenAI, Ollama, Claude)
-- [ ] Unit tests for AiService (mock IAiProvider)
-- [ ] Integration tests for AiController endpoints
-- [ ] Frontend E2E tests for AI features
-- [ ] Load testing for AI processing pipeline
+### Milestone 8 - Testing & QA Hardening - PARTIAL PASS
 
-### Milestone 7 — Deployment & DevOps
-- [ ] Docker containerization (backend + frontend + database)
-- [ ] CI/CD pipeline (GitHub Actions)
-- [ ] Azure deployment (App Service + Static Web Apps)
-- [ ] Environment-specific Docker Compose files
-- [ ] Health check endpoints
+Automated tests do not require a local LLM server. `LocalOpenAI` and `Ollama` protocol coverage uses mocked/fake `HttpClient` handlers; the real local provider is reserved for optional runtime smoke verification only.
 
-### Milestone 8 — Documentation & Launch
-- [ ] Swagger/OpenAPI documentation (Swashbuckle)
-- [ ] User documentation (getting started guide)
-- [ ] API reference guide
-- [ ] Architecture decision records (ADRs)
-- [ ] Video demo walkthrough
+#### Backend Tests Added
+- [x] `AiProviderProtocolTests` verifies `LocalOpenAI` uses `/v1/chat/completions`, optional bearer auth, malformed response failures, and `Ollama` uses `/api/generate` instead of OpenAI chat endpoints.
+- [x] `QuizServiceTests` verifies scoring for multiple choice, true/false, short answer, fill-in-the-blank trim/case normalization, empty/wrong answers, ownership protection, answer visibility, timer persistence, and malformed AI quiz data rejection.
+- [x] Added `Learnify.Tests` to `Learnify.sln` so solution-level `dotnet test` includes the QA suite.
+- [x] Fixed provider error logging in `OllamaAiProvider` and `LocalOpenAiProvider` so JSON response bodies cannot be misread as log-format placeholders.
 
----
+#### Frontend Tests Added
+- [x] Added Vitest, React Testing Library, Jest DOM, jsdom, and `npm test -- --run`.
+- [x] `AiProviderSettings.test.tsx` verifies the `LocalOpenAI` option, provider-specific defaults, save payload, and connection-test payload.
+- [x] `AiProviderBadge.test.tsx` verifies `LocalOpenAI` displays separately from `Ollama`.
+- [x] `QuizResult.test.tsx` verifies score display, explanations, and Retry Incorrect Questions UI.
+- [x] Fixed provider dropdown behavior so selecting `LocalOpenAI` switches to the correct local default model instead of keeping the previous provider's model.
 
-## AI Provider Comparison Table
+#### Verification - 2026-06-04
+- `dotnet build --no-restore` - passed with 0 errors; known NuGet warnings remain.
+- `dotnet test --no-restore` - passed, 18 backend tests.
+- `npm test -- --run` in `Learnify.Client` - passed, 3 files / 6 tests.
+- `npm run build` in `Learnify.Client` - passed.
+- Secret scan for common API-key patterns - no committed cloud AI keys found.
+- `.gitignore` hardened for `node_modules`, `dist`, `.env*`, secrets, coverage, and generic logs.
+- Optional real `LocalOpenAI` runtime smoke passed after the local server became reachable at `http://127.0.0.1:8080`: provider test reported `compatibleApi=openai`, summary returned content, flashcards returned 2 cards, quiz generation returned 2 questions, and submitting the generated quiz scored 2/2. Automated tests still use mocks/fakes and do not require the local LLM.
 
-| Provider | Type | Cost | Default | Model | Base URL |
-|----------|------|------|---------|-------|----------|
-| Gemini | Cloud | Free | ✅ Yes | gemini-1.5-flash | Google AI |
-| OpenAI | Cloud | Paid | No | gpt-4o-mini | api.openai.com |
-| Ollama | Local | Free | No | llama3 (configurable) | localhost:11434 |
-| Claude | Cloud | Paid | No | claude-sonnet-4-20250514 | api.anthropic.com |
+#### Vulnerability Audit
+- `dotnet list package --vulnerable --include-transitive` at solution level failed due a NuGet cache/version parsing issue (`'' is not a valid version string`).
+- Per-project scans succeeded for `Learnify.Application` and `Learnify.Infrastructure` and confirmed existing transitive vulnerabilities: AutoMapper, Azure.Identity, Microsoft.Data.SqlClient, Microsoft.Extensions.Caching.Memory, System.Formats.Asn1, and System.Text.Json.
+- Per-project scans for `Learnify.Web` and `Learnify.Tests` were blocked by the same NuGet cache/version parsing issue after an attempted `dotnet nuget locals http-cache --clear` could not fully clear locked cache entries.
 
-## Switching Providers
+#### Remaining M8 Work
+- [ ] Integration tests for `AiController` endpoints.
+- [ ] Integration tests for `UserAiSettingsController`.
+- [ ] Integration tests for `QuizzesController`.
+- [ ] Frontend tests for Courses/Settings/quiz-taking timer flows.
+- [ ] Playwright E2E: register -> create course -> add note -> generate quiz -> submit quiz.
+- [ ] Remediate or suppress documented NuGet vulnerabilities.
 
-To switch the active AI provider, update `appsettings.json`:
+### Milestone 9 - Deployment & DevOps
+- [ ] Dockerfile for `Learnify.Web`
+- [ ] Dockerfile for `Learnify.Client`
+- [ ] `docker-compose.yml` (backend + frontend + SQL Server)
+- [ ] GitHub Actions CI/CD pipeline
+- [ ] Azure App Service + Static Web Apps deployment
+- [ ] Health check endpoint (`/health`)
 
-```json
-"AiSettings": {
-  "ActiveProvider": "OpenAI"  // Change from "Gemini" to "OpenAI", "Ollama", or "Claude"
-}
-```
-
-## Adding a New Provider
-
-1. Implement `IAiProvider` interface in `Learnify.Core/Interfaces/IAiProvider.cs`
-2. Create new provider class in `Learnify.Infrastructure/AI/Providers/`
-3. Register in `Learnify.Infrastructure/DependencyInjection.cs`:
-   ```csharp
-   services.AddScoped<IAiProvider, MyNewProvider>();
-   services.AddHttpClient("MyNewClient");
-   ```
-4. Add settings class to `AiSettings.cs`
-5. Update `AiProviderFactory` with new provider name mapping
-
-## Security Note
-
-> ⚠️ **NEVER commit API keys to source control.**
-> Use `dotnet user-secrets` for local development:
-> ```bash
-> dotnet user-secrets set "AiSettings:Gemini:ApiKey" "your-key-here"
-> dotnet user-secrets set "AiSettings:OpenAI:ApiKey" "your-key-here"
-> ```
-> For production, use Azure Key Vault or environment variables.
+### Milestone 10 - Documentation & Launch
+- [ ] Swagger/OpenAPI via Swashbuckle
+- [ ] Getting started guide
+- [ ] API reference
+- [ ] Architecture Decision Records (ADRs)
+- [ ] Video demo
 
 ---
 
 ## Completed Milestones
 
-### Milestone 1 — Backend Core/Entities — ✅ COMPLETE
-- All subtasks completed — 5/22/2026
+| Milestone | Completion Date |
+|-----------|----------------|
+| Milestone 1 â€” Backend Foundation | 5/22/2026 |
+| Milestone 2 â€” Authentication & Authorization | 5/22/2026 |
+| Milestone 3 â€” Full-Stack Integration & UI | 5/23/2026 |
+| Milestone 4 â€” Background Services | 5/23/2026 |
+| Milestone 5 â€” AI Integration (Multi-Provider) | 5/23/2026 |
+| Milestone 6 - Smart Learning Core (M6R) | 2026-06-03 |
+| Milestone 7 - Quiz Engine core flow | 2026-06-03 |
 
-### Milestone 2 — Authentication & Authorization — ✅ COMPLETE
-- All subtasks completed — 5/22/2026
+---
 
-### Milestone 3 — Full-Stack Integration & UI — ✅ COMPLETE
-- All subtasks completed — 5/23/2026
+## AI Provider Reference
 
-### Milestone 4 — Background Services — ✅ COMPLETE
-- Notification background service — COMPLETED — 5/23/2026
-- Email notification service — COMPLETED — 5/23/2026
-- Unit tests for channel queue processing (7 tests) — COMPLETED — 5/23/2026
-- CORS configuration for frontend-backend communication — COMPLETED — 5/23/2026
-- Integration verification (HostedService registration, fire-and-forget API, CORS middleware) — COMPLETED — 5/23/2026
+| Provider | Type | Cost | Default | Model ID | Notes |
+|----------|------|------|---------|----------|-------|
+| Gemini | Cloud | Free tier | âœ… Yes | `gemini-3.5-flash` *(upgraded M6.3)* | Recommended starting point |
+| OpenAI | Cloud | Paid | No | `gpt-4o-mini` | Requires paid API key |
+| Claude | Cloud | Paid | No | `claude-sonnet-4-20250514` | Anthropic API key required |
+| Ollama | Local | Free | No | configurable (e.g. `llama3`) | Requires local Ollama install |
 
-### Milestone 5 — AI Integration (Multi-Provider Architecture) — ✅ COMPLETE
-- Core contracts, DTOs, and settings — COMPLETED — 5/23/2026
-- 4 AI provider implementations (Gemini, OpenAI, Ollama, Claude) — COMPLETED — 5/23/2026
-- AiProviderFactory with strategy pattern — COMPLETED — 5/23/2026
-- AiService with educational prompts — COMPLETED — 5/23/2026
-- AiController with 5 REST endpoints — COMPLETED — 5/23/2026
-- React frontend components (5 components + NoteDetail integration) — COMPLETED — 5/23/2026
-- Configuration with appsettings.json — COMPLETED — 5/23/2026
+### Switching Provider (Server-Wide)
+```json
+// Learnify.Web/appsettings.json
+"AiSettings": {
+  "ActiveProvider": "Gemini"  // â†’ "OpenAI" | "Claude" | "Ollama"
+}
+```
+
+### Per-User Provider (After M6.4)
+Each user configures their own provider via the Settings page. Server-wide config acts as fallback only.
+
+---
+
+## Security Notes
+
+> âš ï¸ **Never commit API keys to source control.**
+
+```bash
+# Local development â€” use user-secrets
+dotnet user-secrets set "AiSettings:Gemini:ApiKey" "your-key" --project Learnify.Web
+dotnet user-secrets set "AiSettings:OpenAI:ApiKey" "your-key" --project Learnify.Web
+dotnet user-secrets set "AiSettings:Claude:ApiKey" "your-key" --project Learnify.Web
+```
+
+For production: Azure Key Vault or environment variables injected at deployment time.
+
+---
+
+## Known Issues / Watch Items
+
+| Issue | Status | Notes |
+|-------|--------|-------|
+| Local LLaMA API compatibility | COMPLETE | Learnify now has separate `Ollama` (`/api/*`) and `LocalOpenAI` (`/v1/*`) providers; `LocalOpenAI` runtime generation passed through `/v1/chat/completions`. |
+| Local LLaMA quiz generation | COMPLETE | App-level `LocalOpenAI` quiz generation and generated quiz submission passed with `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`. |
+| PDF extraction partial | PASS_WITH_CAVEAT | `.txt` and `.md` upload persist `Note.Content`; real PDF text extraction is still future work. |
+| Advanced quiz features | Future work | Matching, scenario/coding questions, AI hints, weakness analysis, related concepts, adaptive engine, and analytics dashboard are not implemented. |
+| NuGet vulnerability warnings (19) | Non-blocking | Build passes, but package vulnerability warnings remain for AutoMapper, Azure.Identity, Microsoft.Data.SqlClient, Microsoft.Extensions.Caching.Memory, System.Formats.Asn1, and System.Text.Json. |

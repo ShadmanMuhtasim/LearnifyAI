@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import axios from 'axios';
 import { authService } from '../services/authService';
 import type { AuthResponse } from '../services/authService';
 
@@ -18,9 +19,24 @@ interface AuthState {
   // Actions
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
+  deleteAccount: () => Promise<void>;
   logout: () => void;
   loadUser: () => void;
   clearError: () => void;
+}
+
+function getAuthErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error) && error.response?.data) {
+    const data = error.response.data;
+    if (Array.isArray(data.errors) && data.errors.length > 0) {
+      return data.errors[0];
+    }
+    if (data.message) {
+      return data.message;
+    }
+  }
+
+  return error instanceof Error ? error.message : fallback;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -40,8 +56,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         error: null,
       });
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Login failed';
-      set({ isLoading: false, error: message });
+      set({ isLoading: false, error: getAuthErrorMessage(error, 'Login failed') });
       throw error;
     }
   },
@@ -57,8 +72,23 @@ export const useAuthStore = create<AuthState>((set) => ({
         error: null,
       });
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Registration failed';
-      set({ isLoading: false, error: message });
+      set({ isLoading: false, error: getAuthErrorMessage(error, 'Registration failed') });
+      throw error;
+    }
+  },
+
+  deleteAccount: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      await authService.deleteAccount();
+      set({
+        user: null,
+        isAuthenticated: false,
+        isLoading: false,
+        error: null,
+      });
+    } catch (error: unknown) {
+      set({ isLoading: false, error: getAuthErrorMessage(error, 'Account deletion failed') });
       throw error;
     }
   },

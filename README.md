@@ -1,377 +1,362 @@
 # LearnifyAI
 
-An AI-powered learning platform for course management and intelligent note-taking, built with .NET 8 and Clean Architecture.
+> An AI-powered personal learning platform — upload your study materials and let AI generate summaries, flashcards, quizzes, and personalized study plans.
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/shadmanmuhtasim/LearnifyAI/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![.NET 8](https://img.shields.io/badge/.NET-8.0-purple.svg)](https://dotnet.microsoft.com/download/dotnet/8.0)
-
-**Project Status:** 🟡 *Milestone 1 Complete — Infrastructure Layer Ready*
+[![Backend Build](https://img.shields.io/badge/backend-passing-brightgreen)]()
+[![Frontend Build](https://img.shields.io/badge/frontend-passing-brightgreen)]()
+[![Milestone](https://img.shields.io/badge/milestone-6R%20verified-brightgreen)]()
 
 ---
 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Tech Stack](#tech-stack)
 - [Architecture](#architecture)
-- [Technology Stack](#technology-stack)
-- [Milestone Roadmap](#milestone-roadmap)
-  - [Milestone 1: Foundation & Infrastructure](#milestone-1-foundation--infrastructure)
-    - [1.1 Solution Scaffolding](#11-solution-scaffolding)
-    - [1.2 Domain Entities](#12-domain-entities)
-    - [1.3 Database Infrastructure](#13-database-infrastructure)
-    - [1.4 Repositories & Unit of Work](#14-repositories--unit-of-work)
-    - [1.5 API Controllers & DTOs](#15-api-controllers--dtos)
-    - [1.6 Middleware & Validation](#16-middleware--validation)
-    - [1.7 Seed Data & Migration](#17-seed-data--migration)
-    - [1.8 Testing & Verification](#18-testing--verification)
-  - [Milestone 2: Authentication & Authorization](#milestone-2-authentication--authorization)
-  - [Milestone 3: Application Services](#milestone-3-application-services)
-  - [Milestone 4: Background Services](#milestone-4-background-services)
-  - [Milestone 5: Frontend Integration](#milestone-5-frontend-integration)
-  - [Milestone 6: AI Integration](#milestone-6-ai-integration)
-  - [Milestone 7: Testing & QA](#milestone-7-testing--qa)
-  - [Milestone 8: Deployment & DevOps](#milestone-8-deployment--devops)
-  - [Milestone 9: Documentation & Launch](#milestone-9-documentation--launch)
-- [Installation & Setup](#installation--setup)
+- [Feature Status](#feature-status)
+- [Getting Started](#getting-started)
+- [Testing](#testing)
+- [AI Provider Configuration](#ai-provider-configuration)
 - [Project Structure](#project-structure)
-- [License](#license)
-- [Author](#author)
+- [Roadmap](#roadmap)
 
 ---
 
 ## Overview
 
-LearnifyAI is a comprehensive learning management system designed to help students and teachers manage courses, take intelligent notes, and leverage AI-powered features for an enhanced learning experience. The application follows **Clean Architecture** principles to ensure separation of concerns, testability, and long-term maintainability.
+LearnifyAI is a full-stack AI-powered learning platform targeting individual learners, university students, professionals, and exam preparation students. Users upload study materials (notes, markdown, PDFs) and AI analyzes the content to generate summaries, flashcards, quizzes, study plans, and personalized learning insights.
 
-### Key Features (Planned)
-- Course creation and management for teachers
-- Intuitive course enrollment and progress tracking for students
-- AI-powered note summarization and flashcard generation
-- Role-based access control (Student / Teacher)
-- RESTful API with JWT authentication
-- Responsive frontend with real-time notifications
+---
+
+## Tech Stack
+
+### Frontend (`Learnify.Client`)
+
+| Technology | Purpose |
+|---|---|
+| React 18 + TypeScript | UI framework |
+| Vite | Build tool & dev server |
+| Zustand | Global state management |
+| Axios | HTTP client with JWT interceptors |
+| React Router v7 | Client-side routing |
+
+### Backend (`Learnify.*`)
+
+| Technology | Purpose |
+|---|---|
+| ASP.NET Core (.NET 8) | Web API framework |
+| Entity Framework Core | ORM + migrations |
+| SQL Server | Primary database |
+| JWT Bearer Auth | Authentication & authorization |
+| FluentValidation | Request validation |
+| Background Services (Channel\<T\>) | Async notification queue |
+
+### AI Providers
+
+| Provider | Model | Type | Default |
+|---|---|---|---|
+| Gemini | `gemini-3.5-flash` | Cloud — Free tier | ✅ Yes |
+| OpenAI | `gpt-4o-mini` | Cloud — Paid | No |
+| Claude | `claude-sonnet-4-20250514` | Cloud — Paid | No |
+| Ollama | Configurable (e.g. `llama3`) | Local `/api/*` — Free | No |
+| LocalOpenAI / llama.cpp | Configurable (e.g. `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`) | Local `/v1/*` — Free | No |
 
 ---
 
 ## Architecture
 
-LearnifyAI follows **Clean Architecture** (also known as Onion Architecture), organizing the codebase into concentric layers where each layer depends only on the layers inward toward it.
-
 ```
-┌─────────────────────────────────────────────────────────┐
-│                   LearnPlatform.Web                      │
-│            (ASP.NET Core MVC — Presentation)             │
-│   Controllers, Views, wwwroot, Models                    │
-└─────────────┬───────────────────────┬───────────────────┘
-              │                       │
-              ▼                       ▼
-┌─────────────────────────┐ ┌─────────────────────────────┐
-│  LearnPlatform.Application│ │ LearnPlatform.Infrastructure│
-│   (Application Layer)    │ │   (Infrastructure Layer)    │
-│   Interfaces, DTOs,      │ │   EF Core, Repositories,    │
-│   Service Contracts      │ │   Data Access, UnitOfWork   │
-└─────────────┬────────────┘ └─────────────┬───────────────┘
-              │                             │
-              ▼                             │
-┌───────────────────────────────────────────┐│
-│            LearnPlatform.Core             ││
-│            (Domain Layer)                 ││
-│   Entities, Repository Interfaces,        ││
-│   Domain Services                         ││
-└───────────────────────────────────────────┘│
-                                             │
-                                     ┌───────┘
-                                     │
-                          ┌─────────────────┐
-                          │  SQL Server     │
-                          │  (Database)     │
-                          └─────────────────┘
+Learnify.Core            → Domain entities, interfaces, models (zero external deps)
+Learnify.Application     → DTOs, service interfaces, business logic
+Learnify.Infrastructure  → EF Core, repositories, AI providers, email
+Learnify.Web             → ASP.NET Core API, controllers, middleware, workers
+Learnify.Tests           → xUnit + Moq test suite
+Learnify.Client          → React + TypeScript frontend (Vite)
 ```
 
-### Why Clean Architecture?
+---
 
-| Benefit | Description |
-|---------|-------------|
-| **Separation of Concerns** | Each layer has a single, well-defined responsibility |
-| **Testability** | Core entities and interfaces can be unit-tested without infrastructure dependencies |
-| **Framework Independence** | The domain logic is decoupled from ASP.NET Core and EF Core |
-| **Maintainability** | Changes in one layer do not cascade to unrelated layers |
-| **Scalability** | New features can be added by extending individual layers |
+## Feature Status
 
-### Dependency Rules
-
-```
-LearnPlatform.Web  →  LearnPlatform.Application  →  LearnPlatform.Core
-       ↓                                      ↗
-       └────────────→ LearnPlatform.Infrastructure
-```
-
-- **Core** has zero dependencies on any other project
-- **Application** depends only on **Core**
-- **Infrastructure** depends on **Core** and **Application**
-- **Web** depends on **Application** and **Infrastructure**
+> **Legend:** ✅ Complete (FE + BE both done) · 🔄 Partial (one side missing or incomplete) · ❌ Not Started · `N/A` Not Applicable
 
 ---
 
-## Technology Stack
+### 🔐 Authentication & User Management
 
-| Category | Technology |
-|----------|-----------|
-| **Runtime** | .NET 8 (C# 12) |
-| **Framework** | ASP.NET Core MVC |
-| **ORM** | Entity Framework Core 8 |
-| **Database** | Microsoft SQL Server |
-| **Authentication** | JWT Bearer Tokens (planned) |
-| **Architecture Pattern** | Clean Architecture, Repository Pattern, Unit of Work |
-| **API** | RESTful Web API |
-| **Frontend** | Razor Views, Bootstrap (planned) |
-| **AI Integration** | OpenAI API / Azure AI (planned) |
-
----
-
-## Milestone Roadmap
-
-| Milestone | Status | Description |
-|-----------|--------|-------------|
-| **1.1** Solution Scaffolding | ✅ Completed | Clean Architecture solution with 4 projects |
-| **1.2** Domain Entities | ✅ Completed | BaseEntity, User, Course, Note models |
-| **1.3** Database Infrastructure | ✅ Completed | ApplicationDbContext, EF Core configuration |
-| **1.4** Repositories & Unit of Work | ✅ Completed | Generic + specialized repositories |
-| **1.5** API Controllers & DTOs | 📋 Planned | CRUD endpoints for all entities |
-| **1.6** Middleware & Validation | 📋 Planned | Error handling, validation filters |
-| **1.7** Seed Data & Migration | 📋 Planned | Initial data seeding, EF migrations |
-| **1.8** Testing & Verification | 📋 Planned | Unit & integration tests |
-| **2** Authentication & Authorization | 📋 Planned | JWT, role-based access |
-| **3** Application Services | 📋 Planned | Business logic layer |
-| **4** Background Services | 📋 Planned | Notifications, AI processing |
-| **5** Frontend Integration | 📋 Planned | UI/UX implementation |
-| **6** AI Integration | 📋 Planned | Summarization, flashcards |
-| **7** Testing & QA | 📋 Planned | E2E, load testing |
-| **8** Deployment & DevOps | 📋 Planned | CI/CD, containerization |
-| **9** Documentation & Launch | 📋 Planned | API docs, user guides |
+| Feature | Backend | Frontend | Overall |
+|---|---|---|---|
+| User Registration | ✅ | ✅ | ✅ Complete |
+| User Login (JWT) | ✅ | ✅ | ✅ Complete |
+| JWT Token Refresh | ✅ | ✅ | ✅ Complete |
+| Protected Route Guard | N/A | ✅ | ✅ Complete |
+| Global Exception Middleware | ✅ | N/A | ✅ Complete |
+| Forgot Password | ❌ | ❌ | ❌ Not Started |
+| Social Login (OAuth) | ❌ | ❌ | ❌ Not Started |
+| Onboarding Flow (5-step wizard) | ❌ | ❌ | ❌ Not Started |
 
 ---
 
-### Milestone 1: Foundation & Infrastructure
+### 📚 Course Management
 
-#### 1.1 Solution Scaffolding
-**Status:** ✅ Completed
-
-Created the Clean Architecture solution with four distinct projects:
-- `LearnPlatform.Core` — Domain layer (entities, interfaces)
-- `LearnPlatform.Application` — Application layer (DTOs, service contracts)
-- `LearnPlatform.Infrastructure` — Infrastructure layer (EF Core, repositories)
-- `LearnPlatform.Web` — Presentation layer (MVC web application)
-
-**Files Created:**
-- `LearnPlatform.sln` — Solution file
-- Individual `.csproj` files for each project with correct target framework (`net8.0`)
-
-#### 1.2 Domain Entities
-**Status:** ✅ Completed
-
-Implemented the core domain model with proper inheritance and relationships:
-
-| Entity | Key Properties | Relationships |
-|--------|---------------|---------------|
-| **BaseEntity** | `Id` (Guid), `CreatedAt` (DateTime), `UpdatedAt` (DateTime) | Base class for all entities |
-| **User** | `FullName`, `Email` (unique), `PasswordHash`, `Role` (Student/Teacher) | Has many Courses |
-| **Course** | `Title`, `Description`, `UserId` (FK) | Belongs to User, Has many Notes |
-| **Note** | `Content`, `CourseId` (FK) | Belongs to Course |
-
-**Files:**
-- `LearnPlatform.Core/Entities/BaseEntity.cs`
-- `LearnPlatform.Core/Entities/User.cs`
-- `LearnPlatform.Core/Entities/Course.cs`
-- `LearnPlatform.Core/Entities/Note.cs`
-
-#### 1.3 Database Infrastructure
-**Status:** ✅ Completed
-
-Configured Entity Framework Core with SQL Server:
-
-- `ApplicationDbContext` in `LearnPlatform.Infrastructure/Data/ApplicationDbContext.cs`
-- `DbSet<User>`, `DbSet<Course>`, `DbSet<Note>` properties
-- Entity configurations in `OnModelCreating` with:
-  - Unique constraint on `User.Email`
-  - Cascade delete on `User → Courses` and `Course → Notes`
-  - Property length constraints and default values
-- SQL Server connection string in `appsettings.json`
-- DbContext registered in `Program.cs` with dependency injection
-
-#### 1.4 Repositories & Unit of Work
-**Status:** ✅ Completed
-
-Implemented the Repository and Unit of Work patterns:
-
-| Component | Description |
-|-----------|-------------|
-| **`IRepository<T>`** | Generic interface with `GetByIdAsync`, `AddAsync`, `UpdateAsync`, `DeleteAsync`, `ToListAsync` |
-| **`EfRepository<T>`** | Generic EF Core implementation of `IRepository<T>` |
-| **`IUserRepository`** | Extends `IRepository<User>` with `FindByEmailAsync`, `EmailExistsAsync`, `FindByRoleAsync` |
-| **`ICourseRepository`** | Extends `IRepository<Course>` with `FindByUserIdAsync`, `SearchByTitleAsync`, `CountByUserIdAsync` |
-| **`INoteRepository`** | Extends `IRepository<Note>` with `FindByCourseIdAsync`, `FindByUserIdAsync`, `CountByCourseIdAsync` |
-| **`IUnitOfWork`** | Coordinates repositories with `SaveChangesAsync` and transaction support |
-| **`UnitOfWork`** | Concrete implementation managing `ApplicationDbContext` and all repository instances |
-
-All services registered as **scoped** in `Program.cs` for proper request lifecycle management.
-
-#### 1.5 API Controllers & DTOs
-**Status:** 📋 Planned
-
-- Create `UserController`, `CourseController`, `NoteController` with full CRUD endpoints
-- Define DTOs for request/response mapping
-- Implement proper HTTP status codes (200, 201, 400, 404, 500)
-
-#### 1.6 Middleware & Validation
-**Status:** 📋 Planned
-
-- Global exception handling middleware
-- Request validation filters
-- Custom error response format
-
-#### 1.7 Seed Data & Migration
-**Status:** 📋 Planned
-
-- Initial database seed data (sample users, courses, notes)
-- EF Core migration scripts
-- Seed data generation via `DbInitializer` middleware
-
-#### 1.8 Testing & Verification
-**Status:** 📋 Planned
-
-- Unit tests for repository operations
-- Integration tests for API endpoints
-- Database context tests
+| Feature | Backend | Frontend | Overall |
+|---|---|---|---|
+| List Courses (authenticated user) | ✅ | ✅ | ✅ Complete |
+| Create New Course | ✅ | ✅ | ✅ Complete |
+| Delete Course (owner-only) | ✅ | ✅ | ✅ Complete |
+| Edit / Update Course | ✅ | ✅ | ✅ Complete |
+| Course Detail Page | ✅ | ✅ | ✅ Complete |
+| Course Search & Filter | ❌ | ❌ | ❌ Not Started |
+| Course Sorting | ❌ | ❌ | ❌ Not Started |
+| Course Cover Image | ❌ | ❌ | ❌ Not Started |
+| Course Progress Indicator | ❌ | ❌ | ❌ Not Started |
 
 ---
 
-### Milestone 2: Authentication & Authorization
-**Status:** 📋 Planned
+### 📝 Notes & Content Management
 
-- JWT token generation and validation
-- Password hashing with BCrypt
-- Role-based authorization (Student / Teacher)
-- Login, Register, and Refresh Token endpoints
-
----
-
-### Milestone 3: Application Services
-**Status:** 📋 Planned
-
-- Service layer interfaces in `LearnPlatform.Application`
-- Business logic for course enrollment, note management
-- AutoMapper for DTO mapping
+| Feature | Backend | Frontend | Overall |
+|---|---|---|---|
+| Note Storage (basic) | ✅ | ✅ | ✅ Complete |
+| Note Detail View | ✅ | ✅ | ✅ Complete |
+| Create Note (manual text) | ✅ | ❌ | 🔄 Partial |
+| File Upload (.txt, .md) | ✅ | ✅ | ✅ Complete |
+| PDF File Upload | 🔄 | ✅ | 🔄 Partial - AI analyze only, no real PDF text extraction |
+| Drag-and-Drop Upload UI | 🔄 | 🔄 | 🔄 Partial |
+| Markdown Rendering | ❌ | ❌ | ❌ Not Started |
+| Note Search | ❌ | ❌ | ❌ Not Started |
+| Folder Organization | ❌ | ❌ | ❌ Not Started |
+| Note Tags | ❌ | ❌ | ❌ Not Started |
 
 ---
 
-### Milestone 4: Background Services
-**Status:** 📋 Planned
+### 🤖 AI Features
 
-- `BackgroundService` for periodic notifications
-- AI processing queue for note summarization
-- Email notification service
-
----
-
-### Milestone 5: Frontend Integration
-**Status:** 📋 Planned
-
-- Razor Pages / MVC views for course and note management
-- Bootstrap 5 styling
-- AJAX-powered API calls
-- Responsive design
-
----
-
-### Milestone 6: AI Integration
-**Status:** 📋 Planned
-
-- OpenAI API integration for note summarization
-- AI-powered flashcard generation
-- Course content recommendations
+| Feature | Backend | Frontend | Overall |
+|---|---|---|---|
+| AI Summary Generation | ✅ | ✅ | ✅ Complete |
+| AI Flashcard Generation | ✅ | ✅ | ✅ Complete |
+| AI Study Tips | ✅ | ✅ | ✅ Complete |
+| AI Provider Badge | ✅ | ✅ | ✅ Complete |
+| Multi-Provider Support (4 providers) | ✅ | 🔄 | 🔄 Partial |
+| Per-User AI Provider Settings | ✅ | ✅ | ✅ Complete |
+| AI Quiz Generation | ✅ | ✅ | ✅ Complete |
+| AI Study Plan Generation | ❌ | ❌ | ❌ Not Started |
+| AI Important Concepts | ❌ | ❌ | ❌ Not Started |
+| AI Exam Questions | ❌ | ❌ | ❌ Not Started |
+| Ask AI About This Note | ❌ | ❌ | ❌ Not Started |
+| AI Tutor (Chat Interface) | ❌ | ❌ | ❌ Not Started |
 
 ---
 
-### Milestone 7: Testing & QA
-**Status:** 📋 Planned
+### 🃏 Flashcard System
 
-- End-to-end testing with Playwright
-- Load testing with k6
-- Code coverage reporting
-
----
-
-### Milestone 8: Deployment & DevOps
-**Status:** 📋 Planned
-
-- Docker containerization
-- CI/CD pipeline (GitHub Actions / Azure DevOps)
-- Azure App Service deployment
-- Database backup strategy
+| Feature | Backend | Frontend | Overall |
+|---|---|---|---|
+| Basic Flashcard Viewer | ✅ | ✅ | ✅ Complete |
+| 3D CSS Flip Animation | N/A | ✅ | ✅ Complete |
+| Keyboard Navigation (← / → / Space) | N/A | ✅ | ✅ Complete |
+| Progress Indicator (Card N of M) | N/A | ✅ | ✅ Complete |
+| Shuffle Mode | N/A | ✅ | ✅ Complete |
+| Confidence Rating ("Got it" / "Review") | N/A | ✅ | ✅ Complete |
+| Score Tracking per Session | N/A | ✅ | ✅ Complete |
+| Spaced Repetition Algorithm | ❌ | ❌ | ❌ Not Started |
+| Review History | ❌ | ❌ | ❌ Not Started |
+| Difficulty Levels | ❌ | ❌ | ❌ Not Started |
 
 ---
 
-### Milestone 9: Documentation & Launch
-**Status:** 📋 Planned
+### 🧠 Quiz System
 
-- Swagger/OpenAPI documentation
-- User documentation
-- API reference guide
-- Deployment checklist
+| Feature | Backend | Frontend | Overall |
+|---|---|---|---|
+| Multiple Choice Questions | ✅ | ✅ | ✅ Complete |
+| True / False Questions | ✅ | ✅ | ✅ Complete |
+| Fill-in-the-Blank | ✅ | ✅ | ✅ Complete |
+| Short Answer | ✅ | ✅ | ✅ Complete |
+| Matching Questions | ❌ | ❌ | ❌ Not Started |
+| Scenario-Based Questions | ❌ | ❌ | ❌ Not Started |
+| Coding Questions | ❌ | ❌ | ❌ Not Started |
+| Timer Mode | ✅ | ✅ | ✅ Complete |
+| Practice Mode | ✅ | ✅ | ✅ Complete |
+| Exam Mode | ✅ | ✅ | ✅ Complete |
+| Difficulty Selection | ✅ | ✅ | ✅ Complete |
+| Instant Feedback + Explanations | ✅ | ✅ | ✅ Complete |
+| AI-Generated Hints | ❌ | ❌ | ❌ Not Started |
+| Score Breakdown | ✅ | ✅ | ✅ Complete |
+| Weakness Analysis | ❌ | ❌ | ❌ Not Started |
+| Retry Incorrect Questions | N/A | ✅ | ✅ Complete |
+| Related Concept Questions | ❌ | ❌ | ❌ Not Started |
 
 ---
 
-## Installation & Setup
+### 🗓️ Study Planner
+
+| Feature | Backend | Frontend | Overall |
+|---|---|---|---|
+| Calendar View | ❌ | ❌ | ❌ Not Started |
+| Daily Task List | ❌ | ❌ | ❌ Not Started |
+| Weekly Goals | ❌ | ❌ | ❌ Not Started |
+| AI-Generated Study Schedule | ❌ | ❌ | ❌ Not Started |
+| Reminders / Notifications | ❌ | ❌ | ❌ Not Started |
+
+---
+
+### 📊 Progress & Analytics
+
+| Feature | Backend | Frontend | Overall |
+|---|---|---|---|
+| Learning Streak Tracking | ❌ | ❌ | ❌ Not Started |
+| Quiz Performance Charts | ❌ | ❌ | ❌ Not Started |
+| Topic Mastery Visualization | ❌ | ❌ | ❌ Not Started |
+| Time Spent Studying | ❌ | ❌ | ❌ Not Started |
+| Knowledge Growth Trend | ❌ | ❌ | ❌ Not Started |
+| Learning Heatmap | ❌ | ❌ | ❌ Not Started |
+| Weekly / Monthly Reports | ❌ | ❌ | ❌ Not Started |
+| Course Completion Stats | ❌ | ❌ | ❌ Not Started |
+
+---
+
+### 🏆 Achievement System
+
+| Feature | Backend | Frontend | Overall |
+|---|---|---|---|
+| XP Points System | ❌ | ❌ | ❌ Not Started |
+| User Levels | ❌ | ❌ | ❌ Not Started |
+| Badges | ❌ | ❌ | ❌ Not Started |
+| Milestones | ❌ | ❌ | ❌ Not Started |
+| Streak Rewards | ❌ | ❌ | ❌ Not Started |
+| Learning Challenges | ❌ | ❌ | ❌ Not Started |
+
+---
+
+### 🏠 Dashboard
+
+| Feature | Backend | Frontend | Overall |
+|---|---|---|---|
+| Dashboard Page (`/dashboard`) | N/A | ✅ | ✅ Complete |
+| Welcome Message + User Name | N/A | ✅ | ✅ Complete |
+| Daily Learning Streak Widget | ❌ | ❌ | ❌ Not Started |
+| Learning Statistics Cards | ❌ | ❌ | ❌ Not Started |
+| Study Progress Bars | ❌ | ❌ | ❌ Not Started |
+| Recent Notes Widget | ❌ | ❌ | ❌ Not Started |
+| Upcoming Study Sessions Widget | ❌ | ❌ | ❌ Not Started |
+| AI Recommendations Widget | ❌ | ❌ | ❌ Not Started |
+| Quick Actions Panel | N/A | ✅ | ✅ Complete |
+| Recently Generated Quizzes | ❌ | ❌ | ❌ Not Started |
+| Flashcard Performance Widget | ❌ | ❌ | ❌ Not Started |
+| Weekly Learning Graph | ❌ | ❌ | ❌ Not Started |
+| Achievement Cards | ❌ | ❌ | ❌ Not Started |
+
+---
+
+### ⚙️ Settings Page
+
+| Feature | Backend | Frontend | Overall |
+|---|---|---|---|
+| Profile Settings (name, email) | ❌ | ❌ | ❌ Not Started |
+| Avatar / Profile Picture | ❌ | ❌ | ❌ Not Started |
+| AI Provider Selection | ✅ | ✅ | ✅ Complete |
+| API Key Management (masked) | ✅ | ✅ | ✅ Complete |
+| Ollama Base URL Field | ✅ | ✅ | ✅ Complete |
+| Theme Toggle (Light / Dark) | ❌ | ❌ | ❌ Not Started |
+| Notification Settings | ❌ | ❌ | ❌ Not Started |
+| Security Settings (change password) | ❌ | ❌ | ❌ Not Started |
+
+---
+
+### 🏗️ Infrastructure & DevOps
+
+| Feature | Status |
+|---|---|
+| Email Notification Queue (Channel\<T\>) | ✅ Complete |
+| Background Worker (HostedService) | ✅ Complete |
+| Global Exception Middleware | ✅ Complete |
+| CORS Policy | ✅ Complete |
+| Standardized API Response Wrapper | ✅ Complete |
+| EF Core Migrations | ✅ Complete |
+| Unit Tests (NotificationWorker — 7 passing) | ✅ Complete |
+| Swagger / OpenAPI docs | ❌ Not Started |
+| Dark Mode / Light Mode | ❌ Not Started |
+| Responsive Layout (Mobile + Tablet) | ❌ Not Started |
+| Loading Skeleton States | ❌ Not Started |
+| Toast Notification System | ❌ Not Started |
+| Global Sidebar Navigation | ❌ Not Started |
+| Docker / docker-compose | ❌ Not Started |
+| CI/CD Pipeline | ❌ Not Started |
+
+---
+
+## Getting Started
 
 ### Prerequisites
 
-Before running this project, ensure you have the following installed:
+- .NET 8 SDK
+- Node.js 18+
+- SQL Server (local or Docker)
 
-| Requirement | Minimum Version |
-|-------------|----------------|
-| [.NET SDK](https://dotnet.microsoft.com/download/dotnet/8.0) | 8.0.x |
-| [SQL Server](https://www.microsoft.com/en-us/sql-server/sql-server-downloads) | 2019 or later / Express |
-| [Entity Framework Core Tools](https://learn.microsoft.com/ef/core/cli/dotnet/) | 8.0.x |
-| [Visual Studio](https://visualstudio.microsoft.com/) or [VS Code](https://code.visualstudio.com/) | Latest |
-
-### How to Run
+### Backend Setup
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/shadmanmuhtasim/LearnifyAI.git
-cd LearnifyAI
-
-# 2. Restore NuGet packages
-dotnet restore
-
-# 3. Update connection string in LearnPlatform.Web/appsettings.json
-#    Set your SQL Server connection string:
-#    "DefaultConnection": "Server=...;Database=LearnifyAI;Trusted_Connection=True;TrustServerCertificate=True;"
-
-# 4. Apply database migrations
-dotnet ef database update --project LearnPlatform.Infrastructure --startup-project LearnPlatform.Web
-
-# 5. Run the application
-dotnet run --project LearnPlatform.Web
-
-# 6. Open in browser
-#    https://localhost:5001
+cd Learnify.Web
+dotnet user-secrets set "AiSettings:Gemini:ApiKey" "your-key"
+dotnet ef database update
+dotnet run
 ```
 
-### Building from Source
+### Frontend Setup
 
 ```bash
-# Build the entire solution
-dotnet build LearnPlatform.sln
+cd Learnify.Client
+npm install
+cp .env.example .env   # Set VITE_API_BASE_URL=http://localhost:5xxx
+npm run dev
+```
 
-# Build without restoring (fast rebuild)
+---
+
+## Testing
+
+Automated tests must not require a local LLM server. `LocalOpenAI` and `Ollama` provider tests use fake `HttpMessageHandler` responses, so they can run offline and in CI.
+
+```bash
 dotnet build --no-restore
+dotnet test --no-restore
 
-# Publish for production
-dotnet publish LearnPlatform.Web -c Release -o ./publish
+cd Learnify.Client
+npm test -- --run
+npm run build
 ```
+
+Optional runtime smoke verification may use a real OpenAI-compatible local server at `http://127.0.0.1:8080`. If that server is not reachable, start it before retrying the runtime smoke.
+
+---
+
+## AI Provider Configuration
+
+Configured in `Learnify.Web/appsettings.json`:
+
+```json
+"AiSettings": {
+  "ActiveProvider": "Gemini",
+  "Gemini":  { "ApiKey": "", "Model": "gemini-3.5-flash" },
+  "OpenAI":  { "ApiKey": "", "Model": "gpt-4o-mini" },
+  "Claude":  { "ApiKey": "", "Model": "claude-sonnet-4-20250514" },
+  "Ollama":  { "BaseUrl": "http://127.0.0.1:8080", "Model": "llama3" },
+  "LocalOpenAI": {
+    "BaseUrl": "http://127.0.0.1:8080",
+    "Model": "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+    "ApiKey": ""
+  }
+}
+```
+
+Local provider protocols are separate:
+- `Ollama` uses Ollama-compatible `/api/tags` and `/api/generate`.
+- `LocalOpenAI / llama.cpp` uses OpenAI-compatible `/v1/models` and `/v1/chat/completions`.
+- Example local base URL: `http://127.0.0.1:8080`.
+
+> ⚠️ **Never commit API keys to source control.** Use `dotnet user-secrets` locally and Azure Key Vault / environment variables in production.
 
 ---
 
@@ -379,87 +364,38 @@ dotnet publish LearnPlatform.Web -c Release -o ./publish
 
 ```
 LearnifyAI/
-├── LearnPlatform.sln                          ← Solution file
-├── README.md                                  ← This file
-├── PROJECT.md                                 ← Detailed architecture doc
-│
-├── LearnPlatform.Core/                        ← Domain Layer
-│   ├── Entities/
-│   │   ├── BaseEntity.cs                      ← Base entity (Id, CreatedAt, UpdatedAt)
-│   │   ├── User.cs                            ← User entity (Student/Teacher)
-│   │   ├── Course.cs                          ← Course entity
-│   │   └── Note.cs                            ← Note entity
-│   └── Interfaces/
-│       ├── IRepository.cs                     ← Generic repository interface
-│       ├── IUserRepository.cs                 ← User-specific repository interface
-│       ├── ICourseRepository.cs               ← Course-specific repository interface
-│       ├── INoteRepository.cs                 ← Note-specific repository interface
-│       └── IUnitOfWork.cs                     ← Unit of Work interface
-│
-├── LearnPlatform.Application/                 ← Application Layer
-│   └── (DTOs, Service Interfaces — to be added)
-│
-├── LearnPlatform.Infrastructure/              ← Infrastructure Layer
-│   ├── Data/
-│   │   └── ApplicationDbContext.cs            ← EF Core DbContext
-│   ├── Repositories/
-│   │   ├── EfRepository.cs                    ← Generic EF repository
-│   │   ├── UserRepository.cs                  ← User repository
-│   │   ├── CourseRepository.cs                ← Course repository
-│   │   └── NoteRepository.cs                  ← Note repository
-│   └── UnitOfWork/
-│       └── UnitOfWork.cs                      ← Unit of Work implementation
-│
-└── LearnPlatform.Web/                         ← Presentation Layer
-    ├── Controllers/                           ← API Controllers (to be added)
-    ├── Views/                                 ← Razor Views
-    ├── Models/                                ← View Models
-    ├── Program.cs                             ← App startup & DI
-    ├── appsettings.json                       ← Configuration
-    └── wwwroot/                               ← Static files
+├── Learnify.Core/              # Domain entities, interfaces, models
+├── Learnify.Application/       # DTOs, service interfaces, business logic
+├── Learnify.Infrastructure/    # EF Core, repositories, AI providers
+├── Learnify.Web/               # ASP.NET Core API, controllers, middleware
+├── Learnify.Tests/             # xUnit test suite
+└── Learnify.Client/            # React + TypeScript frontend
+    ├── src/
+    │   ├── components/         # Reusable UI components
+    │   │   └── AI/             # AI-specific components
+    │   ├── pages/              # Page-level route components
+    │   ├── services/           # Axios API service layer
+    │   ├── store/              # Zustand state stores
+    │   └── App.tsx             # Router + route definitions
+    └── vite.config.ts
 ```
 
 ---
 
-## License
+## Roadmap
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-```
-MIT License
-
-Copyright (c) 2026 Shadman Muhtasim
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
----
-
-## Author
-
-| Detail | Information |
-|--------|-------------|
-| **Name** | Shadman Muhtasim |
-| **Project** | LearnifyAI — AI-Powered Learning Platform |
-| **Tech Stack** | .NET 8, EF Core 8, SQL Server, Clean Architecture |
-| **Current Status** | Milestone 1 Complete — Infrastructure Layer Ready |
-
----
-
-> **Note:** This project is actively under development. Milestones 1.5 through 1.8 are in progress, followed by Milestones 2 through 9. Check the [Milestone Roadmap](#milestone-roadmap) section for the latest status.
+| Milestone | Focus | Status |
+|---|---|---|
+| M1 — Backend Foundation | Entities, repositories, Unit of Work | ✅ Done |
+| M2 — Auth & Security | JWT, middleware, FluentValidation | ✅ Done |
+| M3 — Full-Stack Integration | Frontend scaffolding, Axios, routing | ✅ Done |
+| M4 — Background Services | Email queue, HostedService | ✅ Done |
+| M5 — AI Integration | Multi-provider AI, summary, flashcards | ✅ Done |
+| M6 — Smart Learning Core | Course CRUD, `.txt/.md` upload, per-user settings, flashcard polish | ✅ M6R verified; PDF extraction remains future work |
+| M7 — Quiz Engine | AI-generated quizzes, taking flow, attempts, scoring, modes, timer, retry, results | ✅ Complete for M7.1 quiz polish; advanced analytics/adaptive features remain future work |
+| M8 — Testing & QA Hardening | Backend unit/provider tests, frontend component tests, builds, vulnerability audit | 🔄 Partial - automated tests pass; integration/E2E and vulnerability remediation remain |
+| M9 — Analytics & Achievements | Progress tracking, gamification | ⏳ Planned |
+| M10 — Dashboard & UI Polish | Full dashboard, dark mode, animations | ⏳ Planned |
+| M11 — AI Tutor & Study Planner | Chat interface, calendar scheduler | ⏳ Planned |
+| M12 — Deployment & DevOps | Docker, CI/CD, Azure App Service | ⏳ Planned |
+| M13 — Docs & Launch | Swagger, ADRs, getting started guide | ⏳ Planned |

@@ -5,6 +5,7 @@ using Learnify.Core.Entities;
 using Learnify.Core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace Learnify.Web.Controllers;
 
@@ -25,6 +26,9 @@ public class UsersController : ControllerBase
         _logger = logger;
         _notificationService = notificationService;
     }
+
+    private Guid GetUserId()
+        => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
     // GET: api/users
     [HttpGet]
@@ -100,6 +104,32 @@ public class UsersController : ControllerBase
         {
             _logger.LogError(ex, "Error creating user.");
             return StatusCode(500, ApiResponse<UserDTO>.BadRequest("An error occurred while creating the user."));
+        }
+    }
+
+    // DELETE: api/users/me
+    [HttpDelete("me")]
+    public async Task<ActionResult<ApiResponse>> DeleteCurrentUser()
+    {
+        try
+        {
+            var userId = GetUserId();
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            if (user == null)
+            {
+                return NotFound(ApiResponse.NotFound("User account not found."));
+            }
+
+            _unitOfWork.Users.Remove(user);
+            await _unitOfWork.SaveChangesAsync();
+
+            _logger.LogInformation("User account deleted: {UserId}", userId);
+            return Ok(ApiResponse.Ok("Account deleted successfully."));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting the current user account.");
+            return StatusCode(500, ApiResponse.BadRequest("An error occurred while deleting the account."));
         }
     }
 }

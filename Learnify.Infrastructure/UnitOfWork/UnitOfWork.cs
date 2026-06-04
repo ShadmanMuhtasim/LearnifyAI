@@ -15,6 +15,9 @@ public class UnitOfWork : IUnitOfWork
     private ICourseRepository? _courses;
     private INoteRepository? _notes;
     private ILessonRepository? _lessons;
+    private IUserAiSettingsRepository? _userAiSettings;
+    private IQuizRepository? _quizzes;
+    private IQuizAttemptRepository? _quizAttempts;
     private bool _disposed = false;
 
     public UnitOfWork(ApplicationDbContext context)
@@ -29,6 +32,12 @@ public class UnitOfWork : IUnitOfWork
     public INoteRepository Notes => _notes ??= new NoteRepository(_context);
 
     public ILessonRepository Lessons => _lessons ??= new LessonRepository(_context);
+
+    public IUserAiSettingsRepository UserAiSettings => _userAiSettings ??= new UserAiSettingsRepository(_context);
+
+    public IQuizRepository Quizzes => _quizzes ??= new QuizRepository(_context);
+
+    public IQuizAttemptRepository QuizAttempts => _quizAttempts ??= new QuizAttemptRepository(_context);
 
     public async Task<int> SaveChangesAsync()
     {

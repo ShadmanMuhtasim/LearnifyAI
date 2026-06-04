@@ -24,9 +24,11 @@ public static class DependencyInjection
         services.AddScoped<IAiProvider, GeminiAiProvider>();
         services.AddScoped<IAiProvider, OpenAiProvider>();
         services.AddScoped<IAiProvider, OllamaAiProvider>();
+        services.AddScoped<IAiProvider, LocalOpenAiProvider>();
         services.AddScoped<IAiProvider, ClaudeAiProvider>();
 
         // Register the factory (which also implements IAiService)
+        services.AddSingleton<UserAiSettingsStore>();
         services.AddScoped<AiProviderFactory>();
         services.AddScoped<IAiService>(sp =>
             sp.GetRequiredService<AiProviderFactory>());
@@ -37,7 +39,26 @@ public static class DependencyInjection
         {
             client.BaseAddress = new Uri("https://api.openai.com/");
         });
-        services.AddHttpClient("OllamaClient");
+        services.AddHttpClient("OllamaClient", client =>
+        {
+            var baseUrl = configuration["AiSettings:Ollama:BaseUrl"];
+            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri))
+            {
+                uri = new Uri("http://127.0.0.1:8080");
+            }
+
+            client.BaseAddress = uri;
+        });
+        services.AddHttpClient("LocalOpenAIClient", client =>
+        {
+            var baseUrl = configuration["AiSettings:LocalOpenAI:BaseUrl"];
+            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri))
+            {
+                uri = new Uri("http://127.0.0.1:8080");
+            }
+
+            client.BaseAddress = uri;
+        });
         services.AddHttpClient("ClaudeClient", client =>
         {
             client.BaseAddress = new Uri("https://api.anthropic.com/");

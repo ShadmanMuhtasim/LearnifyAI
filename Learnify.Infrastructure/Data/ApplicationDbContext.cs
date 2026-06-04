@@ -1,7 +1,5 @@
-using Microsoft.EntityFrameworkCore;
-using System.Security.Cryptography;
-using System.Text;
 using Learnify.Core.Entities;
+using Microsoft.EntityFrameworkCore;
 
 namespace Learnify.Infrastructure.Data;
 
@@ -17,7 +15,13 @@ public class ApplicationDbContext : DbContext
     public DbSet<User> Users { get; set; } = null!;
     public DbSet<Course> Courses { get; set; } = null!;
     public DbSet<Note> Notes { get; set; } = null!;
+    public DbSet<NoteAttachment> NoteAttachments { get; set; } = null!;
     public DbSet<Lesson> Lessons { get; set; } = null!;
+    public DbSet<UserAiSettings> UserAiSettings { get; set; } = null!;
+    public DbSet<Quiz> Quizzes { get; set; } = null!;
+    public DbSet<Question> Questions { get; set; } = null!;
+    public DbSet<QuizAttempt> QuizAttempts { get; set; } = null!;
+    public DbSet<QuizAttemptAnswer> QuizAttemptAnswers { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -39,6 +43,33 @@ public class ApplicationDbContext : DbContext
                   .WithOne(e => e.User)
                   .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.AiSettings)
+                  .WithOne(e => e.User)
+                  .HasForeignKey<UserAiSettings>(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany<Quiz>()
+                  .WithOne(e => e.User)
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasMany<QuizAttempt>()
+                  .WithOne(e => e.User)
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<UserAiSettings>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UserId).IsUnique();
+            entity.Property(e => e.ActiveProvider).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.ApiKey).HasMaxLength(4000);
+            entity.Property(e => e.CustomModel).HasMaxLength(200);
+            entity.Property(e => e.OllamaBaseUrl).HasMaxLength(500);
+            entity.Property(e => e.LocalOpenAiBaseUrl).HasMaxLength(500);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
         });
 
         // Course entity configuration
@@ -54,6 +85,11 @@ public class ApplicationDbContext : DbContext
                   .WithOne(e => e.Course)
                   .HasForeignKey(e => e.CourseId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany<Quiz>()
+                  .WithOne(e => e.Course)
+                  .HasForeignKey(e => e.CourseId)
+                  .OnDelete(DeleteBehavior.NoAction);
         });
 
         // Note entity configuration
@@ -62,6 +98,27 @@ public class ApplicationDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Content).IsRequired();
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+            entity.Property(e => e.AttachmentName).HasMaxLength(500);
+            entity.Property(e => e.AttachmentType).HasMaxLength(200);
+            entity.Property(e => e.AttachmentBase64);
+
+            entity.HasMany<Quiz>()
+                  .WithOne(e => e.Note)
+                  .HasForeignKey(e => e.NoteId)
+                  .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        // NoteAttachment entity configuration
+        modelBuilder.Entity<NoteAttachment>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.Type).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Base64).IsRequired();
+            entity.HasOne(e => e.Note)
+                  .WithMany(e => e.Attachments)
+                  .HasForeignKey(e => e.NoteId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Lesson entity configuration
@@ -79,117 +136,96 @@ public class ApplicationDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
         });
 
-        // Seed Data - Hash passwords using HMACSHA512
-        var adminId = Guid.NewGuid();
-        var instructorId = Guid.NewGuid();
-        var studentId = Guid.NewGuid();
-
-        // Helper method to hash password
-        (byte[] hash, byte[] salt) HashPassword(string password)
+        modelBuilder.Entity<Quiz>(entity =>
         {
-            using var hmac = new HMACSHA512();
-            var salt = hmac.Key;
-            var hashValue = hmac.ComputeHash(Encoding.UTF8.GetBytes(password));
-            return (hashValue, salt);
-        }
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(300);
+            entity.Property(e => e.Description).HasMaxLength(1000);
+            entity.Property(e => e.Difficulty).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.QuestionTypes).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.TimeLimitMinutes);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
 
-        var adminPwd = "Admin@123";
-        var (adminHash, adminSalt) = HashPassword(adminPwd);
-        var instructorPwd = "Instructor@123";
-        var (instructorHash, instructorSalt) = HashPassword(instructorPwd);
-        var studentPwd = "Student@123";
-        var (studentHash, studentSalt) = HashPassword(studentPwd);
+            entity.HasMany(e => e.Questions)
+                  .WithOne(e => e.Quiz)
+                  .HasForeignKey(e => e.QuizId)
+                  .OnDelete(DeleteBehavior.Cascade);
 
+            entity.HasMany(e => e.Attempts)
+                  .WithOne(e => e.Quiz)
+                  .HasForeignKey(e => e.QuizId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Question>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Type).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.QuestionText).IsRequired();
+            entity.Property(e => e.OptionsJson);
+            entity.Property(e => e.CorrectAnswer).IsRequired();
+            entity.Property(e => e.Explanation);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+        });
+
+        modelBuilder.Entity<QuizAttempt>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Percentage).HasPrecision(5, 2);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+            entity.Property(e => e.StartedAt).HasDefaultValueSql("GETUTCDATE()");
+
+            entity.HasMany(e => e.Answers)
+                  .WithOne(e => e.QuizAttempt)
+                  .HasForeignKey(e => e.QuizAttemptId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<QuizAttemptAnswer>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.UserAnswer).IsRequired();
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+
+            entity.HasOne(e => e.Question)
+                  .WithMany()
+                  .HasForeignKey(e => e.QuestionId)
+                  .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        // Seed Data - Users with fixed GUIDs
         modelBuilder.Entity<User>().HasData(
             new User
             {
-                Id = adminId,
-                FullName = "Shadman Rahman",
-                Email = "shadman@learnify.com",
-                PasswordHash = adminHash,
-                PasswordSalt = adminSalt,
-                Role = "Admin",
+                Id = Guid.Parse("b135b12a-f7a7-45b7-8de2-1acd495220c6"),
+                FullName = "Fatima Akhtar",
+                Email = "fatima@learnify.com",
+                PasswordHash = "$2a$11$f5NYkhm9RA0scsEEhwlK2OAuozIv2nG4en571KfDQGczKY9W.X8Lq",
+                Role = "Instructor",
+                IsActive = true,
                 CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
             },
             new User
             {
-                Id = instructorId,
-                FullName = "Fatima Akhtar",
-                Email = "fatima@learnify.com",
-                PasswordHash = instructorHash,
-                PasswordSalt = instructorSalt,
-                Role = "Instructor",
-                CreatedAt = new DateTime(2026, 1, 5, 0, 0, 0, DateTimeKind.Utc)
+                Id = Guid.Parse("04a8e75c-d34a-4505-aacd-115d52ca5b00"),
+                FullName = "Arif Hossain",
+                Email = "arif@learnify.com",
+                PasswordHash = "$2a$11$nEaM7wvmn2IjWkyvfw3m5eF4UmtNCOjNtB0AfeH1GtKNdLO/y3g3C",
+                Role = "Student",
+                IsActive = true,
+                CreatedAt = new DateTime(2026, 1, 10, 0, 0, 0, DateTimeKind.Utc)
             },
             new User
             {
-                Id = studentId,
-                FullName = "Arif Hossain",
-                Email = "arif@learnify.com",
-                PasswordHash = studentHash,
-                PasswordSalt = studentSalt,
-                Role = "Student",
-                CreatedAt = new DateTime(2026, 1, 10, 0, 0, 0, DateTimeKind.Utc)
+                Id = Guid.Parse("ab561e92-25f7-4b5c-9349-d19de15b18f8"),
+                FullName = "Shadman Rahman",
+                Email = "shadman@learnify.com",
+                PasswordHash = "$2a$11$lqLEXMuNVPmeo9sOpXIIfuCuJD0TtVSM65/IrjohLk1blGjblEUZC",
+                Role = "Admin",
+                IsActive = true,
+                CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
             }
         );
 
-        var course1Id = Guid.NewGuid();
-        var course2Id = Guid.NewGuid();
-        var course3Id = Guid.NewGuid();
-
-        modelBuilder.Entity<Course>().HasData(
-            new Course
-            {
-                Id = course1Id,
-                Title = "Advanced C# Programming",
-                Description = "Deep dive into advanced C# features including async/await, reflection, expression trees, and performance optimization techniques.",
-                UserId = instructorId,
-                CreatedAt = new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc)
-            },
-            new Course
-            {
-                Id = course2Id,
-                Title = "ASP.NET Core Web API Development",
-                Description = "Build robust and scalable RESTful APIs using ASP.NET Core, including authentication, middleware, and best practices.",
-                UserId = instructorId,
-                CreatedAt = new DateTime(2026, 2, 15, 0, 0, 0, DateTimeKind.Utc)
-            },
-            new Course
-            {
-                Id = course3Id,
-                Title = "Entity Framework Core Masterclass",
-                Description = "Master EF Core including migrations, relationships, query tracking, change tracking, and performance tuning for enterprise applications.",
-                UserId = instructorId,
-                CreatedAt = new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc)
-            }
-        );
-
-        var note1Id = Guid.NewGuid();
-        var note2Id = Guid.NewGuid();
-        var note3Id = Guid.NewGuid();
-
-        modelBuilder.Entity<Note>().HasData(
-            new Note
-            {
-                Id = note1Id,
-                Content = "Key takeaway: Use 'await' consistently and avoid .Result to prevent deadlocks. Always prefer async all the way down.",
-                CourseId = course1Id,
-                CreatedAt = new DateTime(2026, 3, 10, 0, 0, 0, DateTimeKind.Utc)
-            },
-            new Note
-            {
-                Id = note2Id,
-                Content = "Remember: API versioning is critical for enterprise apps. Consider URL path versioning for simplicity and HTTP header versioning for flexibility.",
-                CourseId = course2Id,
-                CreatedAt = new DateTime(2026, 3, 20, 0, 0, 0, DateTimeKind.Utc)
-            },
-            new Note
-            {
-                Id = note3Id,
-                Content = "EF Core Performance Tip: Use AsNoTracking() for read-only queries to avoid change tracker overhead. Profile with SQL Server Profiler.",
-                CourseId = course3Id,
-                CreatedAt = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc)
-            }
-        );
     }
 }

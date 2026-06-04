@@ -29,10 +29,29 @@ public interface IAiService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Generates a structured quiz from educational content.
+    /// </summary>
+    Task<GeneratedQuizResult> GenerateQuizAsync(
+        string content,
+        IReadOnlyList<string> questionTypes,
+        string difficulty,
+        int numberOfQuestions,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Generates personalized study tips for the given topic.
     /// </summary>
     /// <param name="topic">The topic to generate study tips for.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Bullet-point study tips as a formatted string.</returns>
     Task<string> GetStudyTipsAsync(string topic, CancellationToken ct = default);
+
+    /// <summary>
+    /// Analyzes an uploaded document and returns a structured note summary.
+    /// </summary>
+    /// <param name="content">Text or derived content sent to the AI provider.</param>
+    /// <param name="fileName">Original file name for context.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Structured note analysis metadata.</returns>
+    Task<NoteAnalysisResult> AnalyzeDocumentAsync(string content, string fileName, CancellationToken ct = default);
 }

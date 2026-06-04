@@ -7,7 +7,7 @@ namespace Learnify.Application.Settings;
 public class AiSettings
 {
     /// <summary>
-    /// The active AI provider name (e.g., "Gemini", "OpenAI", "Ollama", "Claude").
+    /// The active AI provider name (e.g., "Gemini", "OpenAI", "Ollama", "LocalOpenAI", "Claude").
     /// </summary>
     public string ActiveProvider { get; set; } = "Gemini";
 
@@ -27,6 +27,11 @@ public class AiSettings
     public OllamaSettings Ollama { get; set; } = new();
 
     /// <summary>
+    /// Local OpenAI-compatible provider settings for llama.cpp and similar servers.
+    /// </summary>
+    public LocalOpenAiSettings LocalOpenAI { get; set; } = new();
+
+    /// <summary>
     /// Anthropic Claude provider settings.
     /// </summary>
     public ClaudeSettings Claude { get; set; } = new();
@@ -42,9 +47,9 @@ public class AiSettings
         public string ApiKey { get; set; } = string.Empty;
 
         /// <summary>
-        /// The Gemini model name (e.g., "gemini-1.5-flash").
+        /// The Gemini model name (e.g., "gemini-3.5-flash").
         /// </summary>
-        public string Model { get; set; } = "gemini-1.5-flash";
+        public string Model { get; set; } = "gemini-3.5-flash";
     }
 
     /// <summary>
@@ -69,14 +74,35 @@ public class AiSettings
     public class OllamaSettings
     {
         /// <summary>
-        /// The base URL of the Ollama server (e.g., "http://localhost:11434").
+        /// The base URL of the Ollama-compatible local server.
         /// </summary>
-        public string BaseUrl { get; set; } = "http://localhost:11434";
+        public string BaseUrl { get; set; } = "http://127.0.0.1:8080";
 
         /// <summary>
         /// The Ollama model name (e.g., "llama3", "mistral", "phi3").
         /// </summary>
         public string Model { get; set; } = "llama3";
+    }
+
+    /// <summary>
+    /// OpenAI-compatible local provider configuration.
+    /// </summary>
+    public class LocalOpenAiSettings
+    {
+        /// <summary>
+        /// The base URL of the OpenAI-compatible local server.
+        /// </summary>
+        public string BaseUrl { get; set; } = "http://127.0.0.1:8080";
+
+        /// <summary>
+        /// The local model name exposed by the server.
+        /// </summary>
+        public string Model { get; set; } = "Qwen3.6-35B-A3B-UD-Q4_K_M.gguf";
+
+        /// <summary>
+        /// Optional API key for local servers that require bearer auth.
+        /// </summary>
+        public string ApiKey { get; set; } = string.Empty;
     }
 
     /// <summary>

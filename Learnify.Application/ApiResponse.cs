@@ -21,6 +21,9 @@ public class ApiResponse<T>
 
     public static ApiResponse<T> BadRequest(string message)
         => new() { Success = false, Message = message };
+
+    public static ApiResponse<T> Fail(List<string> errors)
+        => new() { Success = false, Data = default, Errors = errors };
 }
 
 /// <summary>
@@ -42,4 +45,7 @@ public class ApiResponse
 
     public static ApiResponse BadRequest(string message)
         => new() { Success = false, Message = message };
+
+    public static ApiResponse Fail(List<string> errors)
+        => new() { Success = false, Message = errors.FirstOrDefault() };
 }

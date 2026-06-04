@@ -16,12 +16,16 @@ public class CourseRepository : EfRepository<Course>, ICourseRepository
 
     public async Task<IEnumerable<Course>> FindByUserIdAsync(Guid userId)
     {
-        return await _dbSet.Where(c => c.UserId == userId).ToListAsync();
+        return await _dbSet
+            .Include(c => c.User)
+            .Where(c => c.UserId == userId)
+            .ToListAsync();
     }
 
     public async Task<IEnumerable<Course>> SearchByTitleAsync(string searchTerm)
     {
         return await _dbSet
+            .Include(c => c.User)
             .Where(c => c.Title.Contains(searchTerm))
             .ToListAsync();
     }

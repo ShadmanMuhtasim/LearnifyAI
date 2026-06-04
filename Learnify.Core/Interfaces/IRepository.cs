@@ -66,6 +66,11 @@ public interface IRepository<T> where T : class
     void Remove(T entity);
 
     /// <summary>
+    /// Deletes an entity by its Guid identifier asynchronously.
+    /// </summary>
+    Task DeleteAsync(Guid id);
+
+    /// <summary>
     /// Removes multiple entities asynchronously.
     /// </summary>
     void RemoveRange(IEnumerable<T> entities);
