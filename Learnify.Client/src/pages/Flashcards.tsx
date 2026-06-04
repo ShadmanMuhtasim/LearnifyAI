@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { generateFlashcards, summarizeNote, getStudyTips } from '../services/aiService';
-import type { FlashcardItem } from '../services/aiService';
+import { generateFlashcards, getStudyTips, summarizeNote, type FlashcardItem } from '../services/aiService';
 import { toast } from 'react-hot-toast';
 import AiProviderSettings from '../components/AI/AiProviderSettings';
+import { AppButton, Badge, Card, PageHeader } from '../components/UI/Primitives';
 
 interface LocalFlashcard {
   question: string;
@@ -11,24 +10,17 @@ interface LocalFlashcard {
 }
 
 export default function Flashcards() {
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'generate' | 'summarize' | 'tips'>('generate');
   const [showSettings, setShowSettings] = useState(false);
-
-  // Flashcard generation state
   const [flashcardContent, setFlashcardContent] = useState('');
   const [flashcardTitle, setFlashcardTitle] = useState('');
   const [generatedFlashcards, setGeneratedFlashcards] = useState<LocalFlashcard[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
-
-  // Note summarization state
   const [notesText, setNotesText] = useState('');
   const [summary, setSummary] = useState('');
   const [isSummarizing, setIsSummarizing] = useState(false);
-
-  // Study tips state
   const [tipsTopic, setTipsTopic] = useState('');
   const [studyTips, setStudyTips] = useState('');
   const [isGeneratingTips, setIsGeneratingTips] = useState(false);
@@ -99,8 +91,6 @@ export default function Flashcards() {
     }
   };
 
-  const flipCard = () => setIsFlipped(!isFlipped);
-
   const nextCard = () => {
     setIsFlipped(false);
     setCurrentCardIndex(prev => Math.min(prev + 1, generatedFlashcards.length - 1));
@@ -111,279 +101,152 @@ export default function Flashcards() {
     setCurrentCardIndex(prev => Math.max(prev - 1, 0));
   };
 
+  const currentCard = generatedFlashcards[currentCardIndex];
+
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <button
-            onClick={() => navigate('/')}
-            className="text-gray-600 hover:text-gray-900 flex items-center gap-2"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            Back
-          </button>
-          <h1 className="text-3xl font-bold text-gray-900">AI Learning Tools</h1>
-          <button
-            type="button"
-            onClick={() => setShowSettings((current) => !current)}
-            className="px-4 py-2 rounded-md text-white font-medium shadow-sm"
-            style={{ background: 'linear-gradient(135deg, #6B46C1, #4299E1)' }}
-          >
-            {'⚙️ AI Provider Settings'}
-          </button>
+    <div className="stack">
+      <PageHeader
+        eyebrow="Flashcards"
+        title="AI Learning Tools"
+        subtitle="Generate flashcards, summaries, and study tips from your own material."
+        actions={<AppButton type="button" variant="secondary" onClick={() => setShowSettings((current) => !current)}>AI Provider Settings</AppButton>}
+      />
+
+      {showSettings && <AiProviderSettings />}
+
+      <Card>
+        <div className="cluster">
+          {[
+            ['generate', 'Flashcard Generator'],
+            ['summarize', 'Note Summarizer'],
+            ['tips', 'Study Tips'],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={`ui-button ${activeTab === value ? 'ui-button-primary' : 'ui-button-ghost'}`}
+              onClick={() => setActiveTab(value as typeof activeTab)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
+      </Card>
 
-        {showSettings && (
-          <div className="mb-8">
-            <AiProviderSettings />
-          </div>
-        )}
-
-        {/* Tabs */}
-        <div className="flex gap-2 mb-8 bg-white rounded-lg p-1 shadow-sm">
-          <button
-            onClick={() => setActiveTab('generate')}
-            className={`flex-1 py-3 px-4 rounded-md font-medium transition-colors ${
-              activeTab === 'generate'
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            Flashcard Generator
-          </button>
-          <button
-            onClick={() => setActiveTab('summarize')}
-            className={`flex-1 py-3 px-4 rounded-md font-medium transition-colors ${
-              activeTab === 'summarize'
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            Note Summarizer
-          </button>
-          <button
-            onClick={() => setActiveTab('tips')}
-            className={`flex-1 py-3 px-4 rounded-md font-medium transition-colors ${
-              activeTab === 'tips'
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            Study Tips
-          </button>
-        </div>
-
-        {/* Flashcard Generator Tab */}
-        {activeTab === 'generate' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-xl font-semibold mb-4">Generate Flashcards from Lesson Content</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Lesson Title (optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={flashcardTitle}
-                    onChange={(e) => setFlashcardTitle(e.target.value)}
-                    placeholder="e.g., Introduction to React"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Lesson Content
-                  </label>
-                  <textarea
-                    value={flashcardContent}
-                    onChange={(e) => setFlashcardContent(e.target.value)}
-                    placeholder="Paste your lesson notes, textbook content, or any study material here..."
-                    rows={10}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-                <button
-                  onClick={handleGenerateFlashcards}
-                  disabled={isGenerating}
-                  className="w-full bg-blue-600 text-white py-3 rounded-md font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {isGenerating ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      Generating...
-                    </span>
-                  ) : (
-                    'Generate Flashcards'
-                  )}
-                </button>
-              </div>
+      {activeTab === 'generate' && (
+        <div className="page-two-column">
+          <Card className="stack">
+            <div>
+              <h2>Generate Flashcards from Lesson Content</h2>
+              <p className="muted mt-3">Paste study material and let the active AI provider create a focused deck.</p>
             </div>
+            <label>
+              <span className="form-label">Lesson Title (optional)</span>
+              <input
+                type="text"
+                value={flashcardTitle}
+                onChange={(event) => setFlashcardTitle(event.target.value)}
+                placeholder="e.g., Introduction to React"
+              />
+            </label>
+            <label>
+              <span className="form-label">Lesson Content</span>
+              <textarea
+                value={flashcardContent}
+                onChange={(event) => setFlashcardContent(event.target.value)}
+                placeholder="Paste your lesson notes, textbook content, or any study material here..."
+                rows={10}
+              />
+            </label>
+            <AppButton type="button" onClick={() => void handleGenerateFlashcards()} disabled={isGenerating}>
+              {isGenerating ? 'Generating...' : 'Generate Flashcards'}
+            </AppButton>
+          </Card>
 
-            {/* Flashcard Display */}
-            {generatedFlashcards.length > 0 && (
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <h3 className="text-lg font-semibold mb-4">
-                  Generated Flashcards ({currentCardIndex + 1}/{generatedFlashcards.length})
-                </h3>
-
-                <div className="flex justify-center mb-6">
-                  <div
-                    onClick={flipCard}
-                    className="w-full max-w-2xl min-h-[250px] cursor-pointer transition-all duration-300 relative"
-                    style={{ perspective: '1000px' }}
-                  >
-                    <div
-                      className="w-full min-h-[250px] bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-8 border-2 border-blue-200 flex items-center justify-center transition-transform duration-500"
-                      style={{
-                        transformStyle: 'preserve-3d',
-                        transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
-                      }}
-                    >
-                      <div className="text-center" style={{ transform: 'rotateY(isFlipped ? 180deg : 0deg)' }}>
-                        {!isFlipped ? (
-                          <>
-                            <p className="text-sm text-gray-500 mb-2">Question</p>
-                            <p className="text-lg font-medium text-gray-900">{generatedFlashcards[currentCardIndex].question}</p>
-                            <p className="text-sm text-gray-400 mt-4">Click to reveal answer</p>
-                          </>
-                        ) : (
-                          <>
-                            <p className="text-sm text-gray-500 mb-2">Answer</p>
-                            <p className="text-lg font-medium text-gray-900">{generatedFlashcards[currentCardIndex].answer}</p>
-                            <p className="text-sm text-gray-400 mt-4">Click to see question</p>
-                          </>
-                        )}
-                      </div>
-                    </div>
+          <Card className="stack">
+            <div className="split">
+              <h2>Study Session</h2>
+              {generatedFlashcards.length > 0 && (
+                <Badge tone="primary">{currentCardIndex + 1}/{generatedFlashcards.length}</Badge>
+              )}
+            </div>
+            {currentCard ? (
+              <>
+                <button
+                  type="button"
+                  className="flashcard-surface"
+                  onClick={() => setIsFlipped((current) => !current)}
+                >
+                  <div>
+                    <div className="eyebrow mb-3">{isFlipped ? 'Answer' : 'Question'}</div>
+                    <p>{isFlipped ? currentCard.answer : currentCard.question}</p>
+                    <p className="muted text-small mt-3">Click to flip</p>
                   </div>
-                </div>
-
-                {/* Navigation */}
-                <div className="flex justify-between items-center">
-                  <button
-                    onClick={prevCard}
-                    disabled={currentCardIndex === 0}
-                    className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Previous
-                  </button>
-                  <span className="text-gray-600">
-                    {currentCardIndex + 1} / {generatedFlashcards.length}
-                  </span>
-                  <button
-                    onClick={nextCard}
-                    disabled={currentCardIndex === generatedFlashcards.length - 1}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Note Summarizer Tab */}
-        {activeTab === 'summarize' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-xl font-semibold mb-4">Summarize Your Notes</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Your Notes
-                  </label>
-                  <textarea
-                    value={notesText}
-                    onChange={(e) => setNotesText(e.target.value)}
-                    placeholder="Paste your raw notes here..."
-                    rows={10}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-                <button
-                  onClick={handleSummarizeNotes}
-                  disabled={isSummarizing}
-                  className="w-full bg-blue-600 text-white py-3 rounded-md font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {isSummarizing ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      Summarizing...
-                    </span>
-                  ) : (
-                    'Summarize Notes'
-                  )}
                 </button>
-              </div>
-            </div>
-
-            {summary && (
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <h3 className="text-lg font-semibold mb-4">Summary</h3>
-                <p className="text-gray-700 whitespace-pre-wrap">{summary}</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Study Tips Tab */}
-        {activeTab === 'tips' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-xl font-semibold mb-4">Get AI Study Tips</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Topic
-                  </label>
-                  <input
-                    type="text"
-                    value={tipsTopic}
-                    onChange={(e) => setTipsTopic(e.target.value)}
-                    placeholder="e.g., Machine Learning, World War II, Organic Chemistry"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+                <div className="cluster" style={{ justifyContent: 'center' }}>
+                  <AppButton type="button" variant="secondary" onClick={prevCard} disabled={currentCardIndex === 0}>Previous</AppButton>
+                  <AppButton type="button" variant="secondary" onClick={() => setGeneratedFlashcards((cards) => [...cards].sort(() => Math.random() - 0.5))}>Shuffle</AppButton>
+                  <AppButton type="button" onClick={nextCard} disabled={currentCardIndex === generatedFlashcards.length - 1}>Next</AppButton>
                 </div>
-                <button
-                  onClick={handleGenerateTips}
-                  disabled={isGeneratingTips}
-                  className="w-full bg-blue-600 text-white py-3 rounded-md font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {isGeneratingTips ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      Generating...
-                    </span>
-                  ) : (
-                    'Get Study Tips'
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {studyTips && (
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <h3 className="text-lg font-semibold mb-4">Study Tips for "{tipsTopic}"</h3>
-                <div className="text-gray-700 whitespace-pre-wrap">{studyTips}</div>
-              </div>
+                <div className="cluster" style={{ justifyContent: 'center' }}>
+                  <AppButton type="button" variant="secondary">Got it</AppButton>
+                  <AppButton type="button" variant="secondary">Review again</AppButton>
+                </div>
+              </>
+            ) : (
+              <p className="muted">Generated flashcards will appear here.</p>
             )}
-          </div>
-        )}
-      </div>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === 'summarize' && (
+        <div className="grid grid-2">
+          <Card className="stack">
+            <h2>Summarize Your Notes</h2>
+            <label>
+              <span className="form-label">Your Notes</span>
+              <textarea
+                value={notesText}
+                onChange={(event) => setNotesText(event.target.value)}
+                placeholder="Paste your raw notes here..."
+                rows={10}
+              />
+            </label>
+            <AppButton type="button" onClick={() => void handleSummarizeNotes()} disabled={isSummarizing}>
+              {isSummarizing ? 'Summarizing...' : 'Summarize Notes'}
+            </AppButton>
+          </Card>
+          <Card className="stack">
+            <h2>Summary</h2>
+            <p className="muted" style={{ whiteSpace: 'pre-wrap' }}>{summary || 'Your summary will appear here.'}</p>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === 'tips' && (
+        <div className="grid grid-2">
+          <Card className="stack">
+            <h2>Get AI Study Tips</h2>
+            <label>
+              <span className="form-label">Topic</span>
+              <input
+                type="text"
+                value={tipsTopic}
+                onChange={(event) => setTipsTopic(event.target.value)}
+                placeholder="e.g., Machine Learning, World War II, Organic Chemistry"
+              />
+            </label>
+            <AppButton type="button" onClick={() => void handleGenerateTips()} disabled={isGeneratingTips}>
+              {isGeneratingTips ? 'Generating...' : 'Get Study Tips'}
+            </AppButton>
+          </Card>
+          <Card className="stack">
+            <h2>{tipsTopic ? `Study Tips for "${tipsTopic}"` : 'Study Tips'}</h2>
+            <p className="muted" style={{ whiteSpace: 'pre-wrap' }}>{studyTips || 'Tips will appear here.'}</p>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

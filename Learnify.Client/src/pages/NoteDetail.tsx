@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import apiClient from '../services/api';
 import AttachmentViewer from '../components/Notes/AttachmentViewer';
 import FileUploader from '../components/Notes/FileUploader';
 import StudyTips from '../components/AI/StudyTips';
 import NoteSummarizer from '../components/AI/NoteSummarizer';
+import FlashcardViewer from '../components/AI/FlashcardViewer';
+import { AppButton, Badge, Card, LoadingState } from '../components/UI/Primitives';
 
 interface NoteAttachment {
   id: string;
@@ -24,6 +26,13 @@ interface Note {
   createdAt: string;
 }
 
+const conceptHints = [
+  'Key Terms',
+  'Definitions',
+  'Examples',
+  'Open Questions',
+];
+
 export default function NoteDetail() {
   const { id } = useParams<{ id: string }>();
   const { isAuthenticated } = useAuthStore();
@@ -33,6 +42,7 @@ export default function NoteDetail() {
   const [editContent, setEditContent] = useState('');
   const [showAttachmentViewer, setShowAttachmentViewer] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [activeTool, setActiveTool] = useState<'summary' | 'flashcards' | 'tips' | null>('summary');
 
   useEffect(() => {
     const fetchNote = async () => {
@@ -42,13 +52,13 @@ export default function NoteDetail() {
           setNote(response.data.data);
         }
       } catch {
-        // ignore
+        // Keep the existing quiet failure behavior.
       } finally {
         setLoading(false);
       }
     };
 
-    fetchNote();
+    void fetchNote();
   }, [id]);
 
   const handleSaveEdit = async () => {
@@ -63,7 +73,7 @@ export default function NoteDetail() {
         setIsEditing(false);
       }
     } catch {
-      // ignore
+      // Keep the existing quiet failure behavior.
     } finally {
       setIsSaving(false);
     }
@@ -79,12 +89,11 @@ export default function NoteDetail() {
         } : null);
       }
     } catch {
-      // ignore
+      // Keep the existing quiet failure behavior.
     }
   };
 
   const handleFileUploadSuccess = async (attachment: { name: string; type: string; base64: string }) => {
-    // Convert base64 back to include the prefix for the UI
     const newAttachment: NoteAttachment = {
       id: crypto.randomUUID(),
       name: attachment.name,
@@ -92,7 +101,6 @@ export default function NoteDetail() {
       base64: attachment.base64
     };
 
-    // Save note with new attachment
     const currentAttachments = note?.attachments || [];
     const response = await apiClient.put<any>(`/api/notes/${id}`, {
       content: note?.content || '',
@@ -110,288 +118,182 @@ export default function NoteDetail() {
   if (!isAuthenticated) return null;
 
   if (loading) {
-    return (
-      <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '60vh' }}>
-        <div className="spinner-border text-primary" role="status">
-          <span className="visually-hidden">Loading...</span>
-        </div>
-      </div>
-    );
+    return <LoadingState label="Loading note..." />;
   }
 
   if (!note) {
     return (
-      <div style={{ textAlign: 'center', padding: '3rem', color: '#666' }}>
+      <div className="empty-state">
         <h2>Note not found</h2>
-        <Link to="/notes" style={{ color: '#667eea' }}>← Back to Notes</Link>
+        <Link to="/notes" className="btn btn-outline-primary">Back to Notes</Link>
       </div>
     );
   }
 
+  const attachments = note.attachments || [];
+  const hasContent = note.content.trim().length > 0;
+
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem 1rem' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <Link to="/notes" style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '0.5rem',
-          color: '#667eea',
-          textDecoration: 'none',
-          fontWeight: 500,
-          fontSize: '1rem'
-        }}>
-          <span>←</span> Back to Notes
-        </Link>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button
-            onClick={() => {
-              setIsEditing(true);
-              setEditContent(note.content);
-            }}
-            style={{
-              padding: '0.5rem 1rem',
-              background: '#667eea',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: 500
-            }}
-          >
-            ✏️ Edit
-          </button>
-          <button
-            onClick={() => {
-              if (window.confirm('Are you sure you want to delete this note?')) {
-                // Delete logic would go here
-              }
-            }}
-            style={{
-              padding: '0.5rem 1rem',
-              background: '#e74c3c',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: 500
-            }}
-          >
-            🗑️ Delete
-          </button>
-        </div>
-      </div>
+    <div className="stack">
+      <Link to="/notes" className="btn btn-link" style={{ justifySelf: 'start' }}>Back to Notes</Link>
 
-      {/* Note Content */}
-      <div style={{
-        background: 'white',
-        borderRadius: '16px',
-        padding: '2.5rem',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-        marginBottom: '2rem'
-      }}>
-        <h1 style={{ margin: '0 0 0.5rem', color: '#333', fontSize: '2rem', fontWeight: 700 }}>
-          {note.title || 'Untitled Note'}
-        </h1>
-        <p style={{ color: '#888', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-          📅 Created: {new Date(note.createdAt).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          })}
-          {note.courseTitle && <> | 📚 Course: <strong>{note.courseTitle}</strong></>}
-        </p>
-
-        {/* Edit Mode */}
-        {isEditing ? (
-          <div>
-            <textarea
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              style={{
-                width: '100%',
-                minHeight: '300px',
-                padding: '1rem',
-                border: '2px solid #667eea',
-                borderRadius: '12px',
-                fontSize: '1rem',
-                lineHeight: 1.7,
-                resize: 'vertical',
-                fontFamily: 'inherit'
-              }}
-            />
-            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
-              <button
-                onClick={handleSaveEdit}
-                disabled={isSaving}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  background: '#27ae60',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: isSaving ? 'not-allowed' : 'pointer',
-                  fontWeight: 600
-                }}
-              >
-                {isSaving ? 'Saving...' : '💾 Save'}
-              </button>
-              <button
-                onClick={() => setIsEditing(false)}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  background: '#95a5a6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontWeight: 600
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div style={{
-            whiteSpace: 'pre-wrap',
-            lineHeight: 1.8,
-            color: '#444',
-            fontSize: '1.05rem'
-          }}>
-            {note.content}
-          </div>
-        )}
-      </div>
-
-      {/* Attachments Section */}
-      {note.attachments.length > 0 && (
-        <div style={{
-          background: 'white',
-          borderRadius: '16px',
-          padding: '2rem',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-          marginBottom: '2rem'
-        }}>
-          <h3 style={{ margin: '0 0 1.5rem', color: '#333', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            📎 Attachments ({note.attachments.length})
-          </h3>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-            gap: '1rem'
-          }}>
-            {note.attachments.map((attachment) => (
-              <div
-                key={attachment.id}
-                style={{
-                  border: '1px solid #e0e0e0',
-                  borderRadius: '12px',
-                  padding: '1rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.75rem',
-                  transition: 'transform 0.2s, box-shadow 0.2s'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-2px)';
-                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = 'none';
-                }}
-              >
-                <div style={{
-                  width: '40px',
-                  height: '40px',
-                  borderRadius: '8px',
-                  background: '#f0f0f0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '1.25rem'
-                }}>
-                  {attachment.type.startsWith('image/') ? '🖼️' :
-                   attachment.type.startsWith('video/') ? '🎥' :
-                   attachment.type.startsWith('audio/') ? '🎵' :
-                   attachment.type.includes('pdf') ? '📄' : '📎'}
-                </div>
-                <div style={{
-                  fontSize: '0.85rem',
-                  color: '#555',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  fontWeight: 500
-                }}>
-                  {attachment.name}
-                </div>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button
-                    onClick={() => setShowAttachmentViewer(attachment.id)}
-                    style={{
-                      flex: 1,
-                      padding: '0.4rem',
-                      background: '#667eea',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontSize: '0.8rem',
-                      fontWeight: 500
-                    }}
-                  >
-                    👁️ View
-                  </button>
-                  <button
-                    onClick={() => handleDeleteAttachment(attachment.id)}
-                    style={{
-                      padding: '0.4rem 0.75rem',
-                      background: '#e74c3c',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontSize: '0.8rem'
-                    }}
-                  >
-                    🗑️
-                  </button>
+      <div className="page-two-column">
+        <Card className="note-reader">
+          <div className="note-reader-header">
+            <div className="split">
+              <div>
+                <h1>{note.title || 'Untitled Note'}</h1>
+                <div className="note-meta mt-3">
+                  <span>Created {new Date(note.createdAt).toLocaleString()}</span>
+                  {note.courseTitle && <span>Course: {note.courseTitle}</span>}
+                  <Badge tone={hasContent ? 'success' : 'muted'}>{hasContent ? 'AI Ready' : 'Empty'}</Badge>
                 </div>
               </div>
+              <div className="cluster">
+                <AppButton
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setIsEditing(true);
+                    setEditContent(note.content);
+                  }}
+                >
+                  Edit
+                </AppButton>
+                <AppButton
+                  type="button"
+                  variant="danger"
+                  onClick={() => {
+                    window.confirm('Are you sure you want to delete this note?');
+                  }}
+                >
+                  Delete
+                </AppButton>
+              </div>
+            </div>
+          </div>
+
+          <div className="note-content">
+            {isEditing ? (
+              <div className="stack">
+                <label>
+                  <span className="form-label">Note content</span>
+                  <textarea
+                    value={editContent}
+                    onChange={(event) => setEditContent(event.target.value)}
+                    rows={14}
+                    style={{ lineHeight: 1.7 }}
+                  />
+                </label>
+                <div className="cluster">
+                  <AppButton type="button" onClick={() => void handleSaveEdit()} disabled={isSaving}>
+                    {isSaving ? 'Saving...' : 'Save'}
+                  </AppButton>
+                  <AppButton type="button" variant="secondary" onClick={() => setIsEditing(false)}>
+                    Cancel
+                  </AppButton>
+                </div>
+              </div>
+            ) : (
+              <>
+                {note.content || 'This note is empty.'}
+                {note.content.includes('=') && (
+                  <div className="note-code-block">
+                    <pre><code>{note.content.split('\n').find((line) => line.includes('='))}</code></pre>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </Card>
+
+        <aside className="ai-panel">
+          <Card className="stack">
+            <div className="cluster">
+              <span className="nav-icon" aria-hidden="true">AI</span>
+              <h2>AI Analysis</h2>
+            </div>
+
+            <AppButton type="button" disabled title="AI Tutor backend is not part of M8.3">
+              Ask AI Tutor - Coming soon
+            </AppButton>
+
+            <div className="ai-action-list">
+              <AppButton type="button" variant="secondary" onClick={() => setActiveTool('summary')}>
+                Generate Summary
+              </AppButton>
+              <AppButton type="button" variant="secondary" onClick={() => setActiveTool('flashcards')}>
+                Generate Flashcards
+              </AppButton>
+              <Link to="/quizzes" className="btn btn-outline-secondary">
+                Generate Quiz
+              </Link>
+            </div>
+          </Card>
+
+          <Card className="stack">
+            <div className="split">
+              <h2>Key Concepts</h2>
+              <Badge tone="muted">Placeholder</Badge>
+            </div>
+            <p className="muted text-small">Concept extraction is a future enhancement. These are study prompts, not generated concepts.</p>
+            {conceptHints.map((concept) => (
+              <div className="concept-card" key={concept}>
+                <strong>{concept}</strong>
+                <span className="muted text-small">Review the note for this category.</span>
+              </div>
+            ))}
+          </Card>
+        </aside>
+      </div>
+
+      {attachments.length > 0 && (
+        <Card className="stack">
+          <div className="split">
+            <h2>Attachments ({attachments.length})</h2>
+            <Badge tone="primary">Saved files</Badge>
+          </div>
+          <div className="grid grid-3">
+            {attachments.map((attachment) => (
+              <Card key={attachment.id} className="stack">
+                <strong>{attachment.name}</strong>
+                <span className="muted text-small">{attachment.type}</span>
+                <div className="cluster">
+                  <AppButton type="button" variant="secondary" onClick={() => setShowAttachmentViewer(attachment.id)}>
+                    View
+                  </AppButton>
+                  <AppButton type="button" variant="danger" onClick={() => void handleDeleteAttachment(attachment.id)}>
+                    Delete
+                  </AppButton>
+                </div>
+              </Card>
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
-      {/* File Uploader */}
-      <div style={{
-        background: 'white',
-        borderRadius: '16px',
-        padding: '2rem',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-        marginBottom: '2rem'
-      }}>
-        <h3 style={{ margin: '0 0 1rem', color: '#333' }}>📤 Upload Files</h3>
-        <FileUploader onUploadSuccess={handleFileUploadSuccess} />
+      <div className="page-two-column">
+        <Card className="stack">
+          <h2>Upload Files</h2>
+          <p className="muted">Attach supporting material to this note. PDF extraction remains partial.</p>
+          <FileUploader onUploadSuccess={handleFileUploadSuccess} />
+        </Card>
+
+        <Card className="stack">
+          <h2>Active AI Tool</h2>
+          {activeTool === 'summary' && <NoteSummarizer noteId={note.id} content={note.content} />}
+          {activeTool === 'flashcards' && <FlashcardViewer noteId={note.id} content={note.content} />}
+          {activeTool === 'tips' && <StudyTips topic={note.title || note.content.substring(0, 100)} />}
+          {!activeTool && <p className="muted">Choose an AI action from the analysis panel.</p>}
+          <AppButton type="button" variant="secondary" onClick={() => setActiveTool('tips')}>
+            Generate Study Tips
+          </AppButton>
+        </Card>
       </div>
 
-      {/* AI Features */}
-      <div style={{ marginBottom: '2rem' }}>
-        <NoteSummarizer noteId={note.id} content={note.content} />
-      </div>
-
-      <div style={{ marginBottom: '2rem' }}>
-        <StudyTips topic={note.title || note.content.substring(0, 100)} />
-      </div>
-
-      {/* Attachment Viewer Modal */}
       {showAttachmentViewer && (
         <AttachmentViewer
-          attachments={[note.attachments.find(a => a.id === showAttachmentViewer)!].filter(Boolean)}
+          attachments={[attachments.find(a => a.id === showAttachmentViewer)!].filter(Boolean)}
         />
       )}
     </div>

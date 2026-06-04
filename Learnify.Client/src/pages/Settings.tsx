@@ -1,15 +1,24 @@
 import AiProviderSettings from '../components/AI/AiProviderSettings';
+import { Card, PageHeader } from '../components/UI/Primitives';
 
 export default function Settings() {
   return (
-    <div style={{ maxWidth: '960px', margin: '0 auto' }}>
-      <h1 style={{ margin: '0 0 1.5rem', color: '#1A202C' }}>Settings</h1>
-      <section>
-        <h2 style={{ margin: '0 0 1rem', color: '#2D3748', fontSize: '1.25rem' }}>
-          AI Provider
-        </h2>
+    <div className="stack">
+      <PageHeader
+        eyebrow="Settings"
+        title="Settings"
+        subtitle="Manage AI provider routing and local model connection settings."
+      />
+
+      <Card className="stack">
+        <div>
+          <h2>AI Provider</h2>
+          <p className="muted mt-3">
+            Keep Gemini, OpenAI, Claude, Ollama, and LocalOpenAI clearly separated.
+          </p>
+        </div>
         <AiProviderSettings />
-      </section>
+      </Card>
     </div>
   );
 }

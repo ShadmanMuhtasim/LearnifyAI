@@ -339,7 +339,7 @@ dotnet run --project Learnify.Web --launch-profile http
 
 ### Verification Commands
 
-- `dotnet build --no-restore` - passed with 0 errors; existing NuGet vulnerability warnings remain.
+- `dotnet build --no-restore` - passed with 0 errors; existing NuGet vulnerability warnings remained at this checkpoint and were resolved in M8.2.
 - `dotnet test --no-restore` - passed by exit code.
 - `dotnet ef migrations add AddQuizPolishTimer --project Learnify.Infrastructure --startup-project Learnify.Web` - passed.
 - `dotnet ef database update --project Learnify.Infrastructure --startup-project Learnify.Web` - passed after changing optional quiz course/note foreign keys to `NoAction`.
@@ -417,7 +417,7 @@ Automated tests do not require a local LLM server. `LocalOpenAI` and `Ollama` pr
 - [x] Fixed provider dropdown behavior so selecting `LocalOpenAI` switches to the correct local default model instead of keeping the previous provider's model.
 
 #### Verification - 2026-06-04
-- `dotnet build --no-restore` - passed with 0 errors; known NuGet warnings remain.
+- `dotnet build --no-restore` - passed with 0 errors; known NuGet warnings remained at this checkpoint and were resolved in M8.2.
 - `dotnet test --no-restore` - passed, 18 backend tests.
 - `npm test -- --run` in `Learnify.Client` - passed, 3 files / 6 tests.
 - `npm run build` in `Learnify.Client` - passed.
@@ -437,6 +437,113 @@ Automated tests do not require a local LLM server. `LocalOpenAI` and `Ollama` pr
 - [ ] Frontend tests for Courses/Settings/quiz-taking timer flows.
 - [ ] Playwright E2E: register -> create course -> add note -> generate quiz -> submit quiz.
 - [ ] Remediate or suppress documented NuGet vulnerabilities.
+
+### Milestone 8.1 - Integration Tests + Vulnerability Cleanup - PARTIAL PASS
+
+#### Tests Added
+- [x] Added `Learnify.Tests/Integration/LearnifyWebApplicationFactory.cs` with `WebApplicationFactory`, an isolated EF Core in-memory database, fake `IAiService`, and fake local-protocol `IHttpClientFactory`.
+- [x] Added `Learnify.Tests/Integration/ControllerIntegrationTests.cs` covering protected 401s, authenticated JWT flows, `AiController`, `UserAiSettingsController`, `QuizzesController`, answer hiding, scoring, attempts, and cross-user quiz isolation.
+- [x] Added `Learnify.Client/src/pages/Courses.test.tsx` for empty state, create modal, edit, and delete UI basics.
+- [x] Added `Learnify.Client/src/pages/Settings.test.tsx` for loading settings, saving Gemini, and saving `LocalOpenAI` without confusing it with `Ollama`.
+- [x] Added `Learnify.Client/src/pages/QuizTaking.test.tsx` for question rendering, practice feedback, exam answer hiding, timer display, and submit service calls.
+
+#### Vulnerability / Warning Cleanup
+- [x] Updated safe .NET 8 patch packages: EF Core packages to `8.0.27`, `Microsoft.AspNetCore.Authentication.JwtBearer` to `8.0.27`, `Microsoft.Extensions.Http` to `8.0.1`, `Microsoft.Extensions.DependencyInjection` to `8.0.1`, `Microsoft.Extensions.Logging.Abstractions` to `8.0.3`, and `System.IdentityModel.Tokens.Jwt` to `7.5.2`.
+- [x] Pinned test-only legacy transitive packages `System.Net.Http` to `4.3.4` and `System.Text.RegularExpressions` to `4.3.1`, removing the test-project warnings introduced by `Microsoft.AspNetCore.Mvc.Testing`.
+- [x] Removed small compiler warnings in `AiProcessingWorker` and `LessonsController`.
+- [x] M8.2 follow-up removed the vulnerable `AutoMapper.Extensions.Microsoft.DependencyInjection` package, upgraded to `AutoMapper 16.1.1`, and updated AutoMapper registration for the new API.
+- [x] M8.2 follow-up removed scan-blocking `FluentValidation.AspNetCore` and `Moq`/`Castle.Core` dependencies, replacing them with core FluentValidation registration plus a small MVC action filter and manual test fakes.
+
+#### Verification - 2026-06-04
+- `dotnet restore` - passed; remaining M8.1 warning was AutoMapper only, resolved in M8.2.
+- `dotnet build --no-restore` - passed; 0 errors, AutoMapper vulnerability warnings remained in M8.1 and were resolved in M8.2.
+- `dotnet test --no-restore` - passed, 25 backend tests in M8.1; M8.2 passes 26 backend tests.
+- `npm test -- --run` in `Learnify.Client` - passed, 6 files / 16 tests.
+- `npm run build` in `Learnify.Client` - passed.
+- `dotnet list package --vulnerable --include-transitive` - failed at solution level in M8.1 with the NuGet empty-version parsing issue; M8.2 resolves this and the solution-level scan passes.
+- Per-project vulnerability scans:
+  - `Learnify.Core` - no vulnerable packages.
+  - `Learnify.Application` - transitive `AutoMapper 12.0.1`, High, `GHSA-rvv3-g6hj-g44x`.
+  - `Learnify.Infrastructure` - transitive `AutoMapper 12.0.1`, High, `GHSA-rvv3-g6hj-g44x`.
+  - `Learnify.Web` - scan blocked by `FluentValidation.AspNetCore` NuGet registration/cache empty-version issue.
+  - `Learnify.Tests` - scan blocked by `Castle.Core` and `FluentValidation.AspNetCore` NuGet registration/cache empty-version issue.
+
+#### Runtime Smoke - 2026-06-04
+- Protected endpoint returned 401 without JWT.
+- Register and login passed.
+- Course create, edit, detail, and delete passed on a delete-only course.
+- `.txt` and `.md` note uploads passed.
+- Default Gemini/mock-equivalent summarize returned content.
+- Real `LocalOpenAI` server was reachable at `http://127.0.0.1:8080`.
+- `LocalOpenAI` provider test passed with `compatibleApi=openai`.
+- `LocalOpenAI` flashcards returned 2 cards, quiz generation returned 2 questions, and quiz submission scored 2/2.
+- Caveat resolved in M8.2: `LocalOpenAI` summarize returned an empty string on two runtime attempts in this M8.1 smoke because the reasoning model consumed the small completion budget before final content. Automated tests remain mocked/faked and do not require the local LLM.
+
+#### Remaining M8.1 Work
+- [ ] Playwright E2E smoke is not implemented; Playwright is not installed/configured.
+- [x] Resolved in M8.2: AutoMapper vulnerability remediation.
+- [x] Resolved in M8.2: NuGet vulnerability scanner empty-version issue for `FluentValidation.AspNetCore` / `Castle.Core` registration metadata.
+- [x] Resolved in M8.2: `LocalOpenAI` summarize returning empty content at runtime while flashcards and quiz generation work.
+
+### Milestone 8.2 - Caveat Cleanup + Real Provider Runtime Verification - PASS_WITH_CAVEAT
+
+#### LocalOpenAI Summary Caveat Cleanup
+- [x] Diagnosed the empty `LocalOpenAI` summary response against `http://127.0.0.1:8080/v1/chat/completions`: the Qwen reasoning model returned empty `message.content` with `finish_reason=length` when the summary completion budget was too small.
+- [x] Increased local summary `MaxTokens` to `3000`, kept temperature low, and tightened the summary prompt to request final summary text only.
+- [x] Updated `LocalOpenAiProvider` to reject empty `choices[0].message.content` with a clear exception and safe response-shape logging instead of silently returning an empty string.
+- [x] Added a mocked provider protocol test for empty-content failure handling; automated tests still do not require a real local LLM.
+
+#### Vulnerability / Scan Cleanup
+- [x] Replaced vulnerable transitive `AutoMapper 12.0.1` by removing `AutoMapper.Extensions.Microsoft.DependencyInjection` and referencing `AutoMapper 16.1.1` directly.
+- [x] Replaced `FluentValidation.AspNetCore` with `FluentValidation.DependencyInjectionExtensions` and a small `FluentValidationActionFilter`, avoiding the NuGet registration metadata issue while preserving controller validation.
+- [x] Removed `Moq` from the test project and replaced the quiz-service mocks with manual fakes, eliminating the `Castle.Core` scan blocker.
+- [x] Solution-level `dotnet list package --vulnerable --include-transitive` now completes successfully and reports no vulnerable packages.
+- [x] Removed tracked `.env` file from the Git index; local env files remain ignored and the local copy was left in place.
+
+#### Verification - 2026-06-04
+- `dotnet restore` - passed.
+- `dotnet build --no-restore` - passed with 0 warnings and 0 errors.
+- `dotnet test --no-restore` - passed, 26 backend tests.
+- `dotnet list package --vulnerable --include-transitive` - passed at solution level with no vulnerable packages reported.
+- `npm test -- --run` in `Learnify.Client` - passed, 6 files / 16 tests.
+- `npm run build` in `Learnify.Client` - passed.
+
+#### Real Provider Runtime Smoke - 2026-06-04
+- Direct `LocalOpenAI` `/v1/models` and `/v1/chat/completions` checks passed with `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`.
+- Learnify `LocalOpenAI` provider smoke passed: provider test reported `compatibleApi=openai`, summarize returned non-empty content, flashcards returned 2 cards, quiz generation returned 2 questions, and quiz submission scored 2/2.
+- Learnify Gemini smoke passed with default `gemini-3.5-flash`: provider settings, summarize, flashcards, quiz generation, and quiz submission all passed.
+
+#### Remaining M8 Work
+- [ ] Playwright E2E smoke is not implemented; Playwright is not installed/configured.
+
+### Milestone 8.3 - Modern UI/UX Polish Using Stitch Design Reference - COMPLETE
+
+#### UI System / App Shell
+- [x] Added a lightweight reusable frontend UI layer in `Learnify.Client/src/components/UI/Primitives.tsx` for page headers, cards, section panels, buttons, badges, loading, error, empty, and stat states.
+- [x] Replaced the old protected top nav with a shared responsive app shell: left sidebar, sticky topbar, active route highlighting, disabled future items, user/logout area, and AI provider badge.
+- [x] Reworked `Learnify.Client/src/index.css` into LearnifyAI design tokens and reusable classes inspired by the Stitch references: light lavender/off-white workspace, white cards, indigo primary, subtle borders/shadows, responsive grids, right-side AI panels, form controls, and accessible focus states.
+
+#### Pages Polished
+- [x] Dashboard: greeting header, stat cards, quick actions, learning heatmap placeholder, AI recommendation, and recent notes caveat.
+- [x] Courses and Course Detail: modern cards, frontend-only search/filter chips, preserved create/edit/delete/detail flows, and preserved exact empty-state text: `You have no courses yet. Click 'New Course' to get started.`
+- [x] Notes List: folders/tags side panel, text/Markdown upload dropzone styling, note cards with AI-ready chips, and existing create/upload flows preserved.
+- [x] Note Detail: Stitch-style note reader with sticky AI Analysis panel, disabled Ask AI Tutor coming-soon action, summary/flashcard/quiz actions, key-concept placeholder caveat, attachments, file upload, and existing AI helpers preserved.
+- [x] Flashcards: modern AI tools page with tabs, centered study session, flip surface, progress, shuffle, and confidence controls; embedded `FlashcardViewer` keyboard navigation remains intact.
+- [x] Quizzes, QuizTaking, and QuizResult: modern generation panel, quiz cards, question/difficulty chips, practice/exam mode styling, timer polish, score cards, answer breakdown, explanations, and retry incorrect flow preserved.
+- [x] Settings and AI Provider Settings: provider cards plus dropdown, safe API-key placeholder behavior, separate Ollama `/api/*` and LocalOpenAI `/v1/*` protocol explanations, and LocalOpenAI defaults preserved.
+
+#### Verification - 2026-06-04
+- `dotnet build --no-restore` - passed with 0 warnings and 0 errors.
+- `dotnet test --no-restore` - passed, 26 backend tests.
+- `npm test -- --run` in `Learnify.Client` - passed, 6 files / 16 tests.
+- `npm run build` in `Learnify.Client` - passed.
+- `git diff --check` - passed; only line-ending conversion warnings were printed.
+- No backend product features, AI Tutor backend, Study Planner backend, Analytics/Achievements backend, Docker, CI/CD, or deployment work was added in M8.3.
+
+#### Remaining M8.3 / UI Gaps
+- [ ] Playwright E2E smoke remains pending; Playwright is not installed/configured.
+- [ ] Learning heatmap, AI recommendation, key concepts, analytics, study planner, achievements, and AI Tutor remain UI placeholders or disabled where no backend exists.
+- [ ] Real markdown rendering and real PDF text extraction remain future work.
 
 ### Milestone 9 - Deployment & DevOps
 - [ ] Dockerfile for `Learnify.Web`
@@ -514,4 +621,4 @@ For production: Azure Key Vault or environment variables injected at deployment 
 | Local LLaMA quiz generation | COMPLETE | App-level `LocalOpenAI` quiz generation and generated quiz submission passed with `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`. |
 | PDF extraction partial | PASS_WITH_CAVEAT | `.txt` and `.md` upload persist `Note.Content`; real PDF text extraction is still future work. |
 | Advanced quiz features | Future work | Matching, scenario/coding questions, AI hints, weakness analysis, related concepts, adaptive engine, and analytics dashboard are not implemented. |
-| NuGet vulnerability warnings (19) | Non-blocking | Build passes, but package vulnerability warnings remain for AutoMapper, Azure.Identity, Microsoft.Data.SqlClient, Microsoft.Extensions.Caching.Memory, System.Formats.Asn1, and System.Text.Json. |
+| NuGet vulnerability warnings | COMPLETE | M8.2 solution-level `dotnet list package --vulnerable --include-transitive` completed successfully with no vulnerable packages reported. |

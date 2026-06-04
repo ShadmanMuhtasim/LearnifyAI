@@ -75,6 +75,28 @@ public class AiProviderProtocolTests
     }
 
     [Fact]
+    public async Task LocalOpenAiProvider_EmptyContentThrowsClearException()
+    {
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("""
+            {"choices":[{"finish_reason":"length","message":{"content":"","reasoning_content":"thinking only"}}]}
+            """)
+        });
+        var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:8080") };
+        var provider = new LocalOpenAiProvider(
+            client,
+            "local-model",
+            "",
+            NullLogger<LocalOpenAiProvider>.Instance);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            provider.CompleteAsync("Prompt", new AiRequestOptions(), CancellationToken.None));
+
+        Assert.Contains("choices[0].message.content", ex.Message);
+    }
+
+    [Fact]
     public async Task OllamaProvider_UsesOllamaGenerateEndpointNotOpenAiChatEndpoint()
     {
         var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)

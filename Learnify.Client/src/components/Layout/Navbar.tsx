@@ -1,121 +1,107 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import AiProviderBadge from '../AI/AiProviderBadge';
 import { useAuthStore } from '../../store/authStore';
+
+const navItems = [
+  { to: '/dashboard', label: 'Dashboard', icon: 'DB' },
+  { to: '/courses', label: 'Courses', icon: 'CR' },
+  { to: '/notes', label: 'Notes', icon: 'NT' },
+  { to: '/flashcards', label: 'Flashcards', icon: 'FC' },
+  { to: '/quizzes', label: 'Quizzes', icon: 'QZ' },
+  { to: '/settings', label: 'Settings', icon: 'ST' },
+];
+
+const futureItems = [
+  { label: 'AI Tutor', icon: 'AI' },
+  { label: 'Study Planner', icon: 'SP' },
+  { label: 'Analytics', icon: 'AN' },
+  { label: 'Achievements', icon: 'XP' },
+];
+
+function getInitial(name?: string | null) {
+  return name?.trim().charAt(0).toUpperCase() || 'U';
+}
 
 export default function Navbar() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
 
+  const currentItem = navItems.find((item) => location.pathname.startsWith(item.to));
+
   return (
-    <nav style={{
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      padding: '1rem 2rem',
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
-      position: 'sticky',
-      top: 0,
-      zIndex: 100
-    }}>
-      <Link to="/dashboard" style={{
-        color: 'white',
-        textDecoration: 'none',
-        fontSize: '1.5rem',
-        fontWeight: 700
-      }}>
-        LearnifyAI
-      </Link>
-
-      <div style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
-        <Link to="/dashboard" style={{
-          color: 'white',
-          textDecoration: 'none',
-          fontWeight: 500,
-          opacity: 0.9
-        }}>
-          Dashboard
-        </Link>
-        <Link to="/courses" style={{
-          color: 'white',
-          textDecoration: 'none',
-          fontWeight: 500,
-          opacity: 0.9
-        }}>
-          Courses
-        </Link>
-        <Link to="/notes" style={{
-          color: 'white',
-          textDecoration: 'none',
-          fontWeight: 500,
-          opacity: 0.9
-        }}>
-          Notes
-        </Link>
-        <Link to="/quizzes" style={{
-          color: 'white',
-          textDecoration: 'none',
-          fontWeight: 500,
-          opacity: 0.9
-        }}>
-          Quizzes
-        </Link>
-        <Link to="/settings" style={{
-          color: 'white',
-          textDecoration: 'none',
-          fontWeight: 500,
-          opacity: 0.9
-        }}>
-          Settings
+    <>
+      <aside className="app-sidebar" aria-label="Primary navigation">
+        <Link to="/dashboard" className="brand-link">
+          <span className="brand-mark" aria-hidden="true">L</span>
+          <span>
+            <span className="brand-title">LearnifyAI</span>
+            <span className="brand-subtitle">Premium Learning</span>
+          </span>
         </Link>
 
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '1rem',
-          color: 'white',
-          marginLeft: '1rem',
-          paddingLeft: '1rem',
-          borderLeft: '1px solid rgba(255,255,255,0.3)'
-        }}>
-          <AiProviderBadge />
-          <div>
-            <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>
-              {user?.name}
-            </div>
-            <div style={{
-              fontSize: '0.75rem',
-              opacity: 0.8,
-              background: 'rgba(255,255,255,0.2)',
-              padding: '0.15rem 0.5rem',
-              borderRadius: '10px',
-              display: 'inline-block'
-            }}>
-              {user?.role}
-            </div>
+        <Link to="/notes" className="ui-button ui-button-primary sidebar-upload">
+          Upload
+        </Link>
+
+        <nav className="sidebar-nav">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}
+            >
+              <span className="nav-icon" aria-hidden="true">{item.icon}</span>
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+
+          {futureItems.map((item) => (
+            <span key={item.label} className="sidebar-link disabled" aria-disabled="true">
+              <span className="nav-icon" aria-hidden="true">{item.icon}</span>
+              <span>{item.label}</span>
+              <span className="coming-soon">Soon</span>
+            </span>
+          ))}
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="user-card">
+            <span className="user-avatar" aria-hidden="true">{getInitial(user?.name)}</span>
+            <span>
+              <span className="user-name">{user?.name || 'Learner'}</span>
+              <span className="user-role">{user?.role || 'Student'}</span>
+            </span>
           </div>
-          <button
-            onClick={handleLogout}
-            style={{
-              background: 'rgba(255,255,255,0.2)',
-              border: '1px solid rgba(255,255,255,0.4)',
-              color: 'white',
-              padding: '0.4rem 1rem',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontWeight: 500,
-              fontSize: '0.85rem'
-            }}
-          >
+          <button type="button" className="ui-button ui-button-secondary" onClick={handleLogout}>
             Logout
           </button>
         </div>
-      </div>
-    </nav>
+      </aside>
+
+      <header className="app-topbar">
+        <div className="cluster">
+          <span className="mobile-brand">LearnifyAI</span>
+          <div className="topbar-search" role="search" aria-label="Search placeholder">
+            <span aria-hidden="true">Search</span>
+            <span className="muted">across all materials</span>
+          </div>
+          {currentItem && <span className="ui-badge ui-badge-primary">{currentItem.label}</span>}
+        </div>
+
+        <div className="topbar-actions">
+          <AiProviderBadge />
+          <span className="topbar-icon" aria-label="Notifications">N</span>
+          <button type="button" className="topbar-icon" aria-label="Log out" onClick={handleLogout}>
+            {getInitial(user?.name)}
+          </button>
+        </div>
+      </header>
+    </>
   );
 }

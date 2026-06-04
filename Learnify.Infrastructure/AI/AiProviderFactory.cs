@@ -248,9 +248,13 @@ public class AiProviderFactory : IAiService
         var userId = GetCurrentUserId();
         var provider = await GetActiveProviderAsync(userId);
         _logger.LogDebug("Summarizing note via '{Provider}'", provider.ProviderName);
-        var options = new AiRequestOptions { MaxTokens = 500, Temperature = 0.3f };
+        // Reasoning local models can consume a large part of the completion budget
+        // before emitting final chat content. Keep this high enough for LocalOpenAI
+        // while still asking every provider for a short summary.
+        var options = new AiRequestOptions { MaxTokens = 3000, Temperature = 0.3f };
         var response = await provider.CompleteAsync(
-            $"Summarize the following educational content in 2-3 concise sentences:\n\n{content}",
+            $"Summarize the following educational content in 2-3 concise sentences. " +
+            $"Return only the final summary text, with no reasoning or preamble:\n\n{content}",
             options, ct);
         return response;
     }

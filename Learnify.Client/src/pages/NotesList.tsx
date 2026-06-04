@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import SmartUpload from '../components/Notes/SmartUpload';
 import { useAuthStore } from '../store/authStore';
 import apiClient from '../services/api';
+import { AppButton, Badge, Card, EmptyState, ErrorState, LoadingState, PageHeader } from '../components/UI/Primitives';
 
 interface Note {
   id: string;
@@ -18,18 +19,6 @@ interface CourseOption {
   title: string;
 }
 
-const primaryButtonStyle: React.CSSProperties = {
-  background: 'linear-gradient(135deg, #6B46C1, #4299E1)',
-  color: 'white',
-  border: 'none',
-  borderRadius: '10px',
-  padding: '0.6rem 1.2rem',
-  cursor: 'pointer',
-  transition: 'all 0.2s ease',
-  fontWeight: 600,
-  boxShadow: '0 10px 24px rgba(66, 153, 225, 0.22)',
-};
-
 export default function NotesList() {
   const { isAuthenticated } = useAuthStore();
   const [notes, setNotes] = useState<Note[]>([]);
@@ -44,6 +33,8 @@ export default function NotesList() {
   const [uploadForm, setUploadForm] = useState<{ courseId: string; file: File | null }>({ courseId: '', file: null });
   const [createError, setCreateError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [courseFilter, setCourseFilter] = useState('All notes');
 
   const fetchNotes = async () => {
     try {
@@ -67,13 +58,20 @@ export default function NotesList() {
     }
   };
 
+  const loadCourses = async () => {
+    const response = await apiClient.get<any>('/api/courses');
+    if (response.data.success) {
+      setCourses(response.data.data);
+    }
+    return response;
+  };
+
   const openCreateModal = async () => {
     setCreateError(null);
 
     try {
-      const response = await apiClient.get<any>('/api/courses');
+      const response = await loadCourses();
       if (response.data.success) {
-        setCourses(response.data.data);
         setShowCreateModal(true);
       } else {
         setCreateError(response.data.errors?.join(', ') || 'Failed to load courses.');
@@ -90,10 +88,8 @@ export default function NotesList() {
     setShowUploadModal(true);
 
     try {
-      const response = await apiClient.get<any>('/api/courses');
-      if (response.data.success) {
-        setCourses(response.data.data);
-      } else {
+      const response = await loadCourses();
+      if (!response.data.success) {
         setUploadError(response.data.errors?.join(', ') || 'Failed to load courses.');
       }
     } catch {
@@ -165,8 +161,8 @@ export default function NotesList() {
       setUploadForm({ courseId: '', file: null });
       setShowUploadModal(false);
       await fetchNotes();
-    } catch (error: any) {
-      setUploadError(error?.response?.data?.message || 'Failed to upload text note.');
+    } catch (uploadErrorResponse: any) {
+      setUploadError(uploadErrorResponse?.response?.data?.message || 'Failed to upload text note.');
     } finally {
       setUploadingText(false);
     }
@@ -180,158 +176,139 @@ export default function NotesList() {
     void fetchNotes();
   }, [isAuthenticated]);
 
+  const courseNames = useMemo(() => {
+    const names = new Set(notes.map((note) => note.courseTitle || note.courseId).filter(Boolean));
+    return ['All notes', ...Array.from(names)];
+  }, [notes]);
+
+  const visibleNotes = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return notes
+      .filter((note) => courseFilter === 'All notes' || (note.courseTitle || note.courseId) === courseFilter)
+      .filter((note) => {
+        if (!normalizedQuery) return true;
+        return `${note.title || ''} ${note.content} ${note.courseTitle || ''}`.toLowerCase().includes(normalizedQuery);
+      });
+  }, [courseFilter, notes, query]);
+
   if (!isAuthenticated) return null;
 
   if (loading) {
-    return (
-      <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '60vh' }}>
-        <div className="spinner-border text-primary" role="status">
-          <span className="visually-hidden">Loading...</span>
-        </div>
-      </div>
-    );
+    return <LoadingState label="Loading notes..." />;
   }
 
   return (
-    <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 1rem' }}>
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        gap: '1rem',
-        marginBottom: '1.5rem',
-      }}>
-        <h1 style={{ margin: 0, color: '#333' }}>My Notes</h1>
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <button
-            type="button"
-            onClick={() => void openCreateModal()}
-            style={primaryButtonStyle}
-          >
-            {'➕ New Note'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void openUploadModal()}
-            style={primaryButtonStyle}
-          >
-            Upload
-          </button>
+    <div className="stack">
+      <PageHeader
+        title="Notes"
+        subtitle="Upload, organize, and turn your study material into AI-powered practice."
+        actions={(
+          <>
+            <AppButton type="button" variant="secondary" onClick={() => void openCreateModal()}>New Note</AppButton>
+            <AppButton type="button" onClick={() => void openUploadModal()}>Upload</AppButton>
+          </>
+        )}
+      />
+
+      {error && <ErrorState message={error} />}
+
+      <div className="page-two-column" style={{ gridTemplateColumns: '250px minmax(0, 1fr)' }}>
+        <Card className="stack">
+          <div>
+            <div className="eyebrow mb-3">Folders</div>
+            <div className="stack" style={{ gap: 8 }}>
+              {courseNames.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  className={`ui-button ${courseFilter === name ? 'ui-button-primary' : 'ui-button-ghost'}`}
+                  onClick={() => setCourseFilter(name)}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="eyebrow mb-3">Tags</div>
+            <div className="cluster">
+              <Badge tone="primary">AI Ready</Badge>
+              <Badge tone="warning">Uploads</Badge>
+              <Badge tone="muted">PDF partial</Badge>
+            </div>
+          </div>
+        </Card>
+
+        <div className="stack">
+          <Card className="split">
+            <label style={{ flex: 1 }}>
+              <span className="form-label">Search notes</span>
+              <input
+                type="text"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search title, content, or course"
+              />
+            </label>
+            <div className="ui-card" style={{ borderStyle: 'dashed', textAlign: 'center', minWidth: 260 }}>
+              <div className="eyebrow">Upload Dropzone</div>
+              <p className="muted text-small mb-3">Supports .txt and .md. PDF extraction remains partial.</p>
+              <AppButton type="button" onClick={() => void openUploadModal()}>Choose File</AppButton>
+            </div>
+          </Card>
+
+          {notes.length === 0 ? (
+            <EmptyState
+              title="No notes found"
+              message="Create a note or upload a text/Markdown file to start studying."
+              action={<AppButton type="button" onClick={() => void openCreateModal()}>New Note</AppButton>}
+            />
+          ) : visibleNotes.length === 0 ? (
+            <EmptyState
+              title="No matching notes"
+              message="Try a different search term or folder."
+              action={<AppButton type="button" variant="secondary" onClick={() => { setQuery(''); setCourseFilter('All notes'); }}>Clear filters</AppButton>}
+            />
+          ) : (
+            <div className="grid grid-2">
+              {visibleNotes.map((note) => {
+                const hasAiContent = note.content.trim().length > 0;
+                return (
+                  <Link to={`/notes/${note.id}`} key={note.id} style={{ textDecoration: 'none' }}>
+                    <Card className="stack">
+                      <div className="split">
+                        <h2 style={{ fontSize: '1.1rem' }}>{note.title || 'Untitled Note'}</h2>
+                        <Badge tone={hasAiContent ? 'success' : 'muted'}>{hasAiContent ? 'AI Ready' : 'Empty'}</Badge>
+                      </div>
+                      <p className="muted text-small">Course: {note.courseTitle || note.courseId}</p>
+                      <p className="muted">
+                        {note.content.slice(0, 170)}
+                        {note.content.length > 170 ? '...' : ''}
+                      </p>
+                      <span className="text-small muted">
+                        Created {new Date(note.createdAt).toLocaleDateString()}
+                      </span>
+                    </Card>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
-      {error && (
-        <div style={{
-          background: '#fee',
-          border: '1px solid #fcc',
-          borderRadius: '8px',
-          padding: '1rem',
-          color: '#c00',
-        }}>
-          {error}
-        </div>
-      )}
-
-      {notes.length === 0 ? (
-        <div style={{
-          background: 'white',
-          borderRadius: '12px',
-          padding: '2rem',
-          textAlign: 'center',
-          boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
-        }}>
-          <p style={{ color: '#666', fontSize: '1.1rem' }}>
-            No notes found. Create your first note from a course page!
-          </p>
-          <button
-            type="button"
-            onClick={() => void openCreateModal()}
-            style={{ ...primaryButtonStyle, marginTop: '1rem' }}
-          >
-            {'➕ New Note'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void openUploadModal()}
-            style={{ ...primaryButtonStyle, marginTop: '0.75rem' }}
-          >
-            Upload
-          </button>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {notes.map((note) => (
-            <Link
-              to={`/notes/${note.id}`}
-              key={note.id}
-              style={{
-                display: 'block',
-                background: 'white',
-                borderRadius: '12px',
-                padding: '1.25rem',
-                textDecoration: 'none',
-                color: '#333',
-                boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
-                border: '1px solid #eee',
-              }}
-            >
-              <h3 style={{ margin: '0 0 0.5rem', color: '#667eea' }}>
-                {note.title || 'Untitled Note'}
-              </h3>
-              <p style={{ margin: '0 0 0.5rem', color: '#666', fontSize: '0.9rem' }}>
-                Course: {note.courseTitle || note.courseId}
-              </p>
-              <p style={{
-                margin: 0,
-                color: '#888',
-                fontSize: '0.85rem',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}>
-                {note.content}
-              </p>
-            </Link>
-          ))}
-        </div>
-      )}
-
       {showCreateModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.5)',
-          zIndex: 1000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '1rem',
-        }}>
-          <div style={{
-            background: 'white',
-            borderRadius: '16px',
-            padding: '2rem',
-            maxWidth: '500px',
-            width: '100%',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-          }}>
-            <h2 style={{ marginTop: 0, marginBottom: '1rem', color: '#1A202C' }}>Create Note</h2>
+        <div className="modal-backdrop" role="presentation">
+          <div className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="create-note-title">
+            <h2 id="create-note-title" className="mb-3">Create Note</h2>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div className="field-grid">
               <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: '#4A5568', fontWeight: 600 }}>
-                  Course
-                </label>
+                <label htmlFor="note-course" className="form-label">Course</label>
                 <select
+                  id="note-course"
                   value={createForm.courseId}
                   onChange={(event) => setCreateForm((current) => ({ ...current, courseId: event.target.value }))}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #E2E8F0',
-                    borderRadius: '10px',
-                    outline: 'none',
-                  }}
                 >
                   <option value="">Select a course</option>
                   {courses.map((course) => (
@@ -343,67 +320,25 @@ export default function NotesList() {
               </div>
 
               <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: '#4A5568', fontWeight: 600 }}>
-                  Content
-                </label>
+                <label htmlFor="note-content" className="form-label">Content</label>
                 <textarea
+                  id="note-content"
                   value={createForm.content}
                   onChange={(event) => setCreateForm((current) => ({ ...current, content: event.target.value }))}
-                  rows={6}
+                  rows={7}
                   placeholder="Write your note here..."
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    border: '1px solid #E2E8F0',
-                    borderRadius: '10px',
-                    outline: 'none',
-                    resize: 'vertical',
-                  }}
                 />
               </div>
 
-              {createError && (
-                <div style={{
-                  padding: '0.75rem 1rem',
-                  borderRadius: '10px',
-                  background: '#FFF5F5',
-                  color: '#C53030',
-                  border: '1px solid #FED7D7',
-                }}>
-                  {createError}
-                </div>
-              )}
+              {createError && <ErrorState message={createError} />}
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowCreateModal(false);
-                    setCreateError(null);
-                  }}
-                  style={{
-                    padding: '0.6rem 1.2rem',
-                    borderRadius: '10px',
-                    border: '1px solid #CBD5E0',
-                    background: 'white',
-                    color: '#4A5568',
-                    cursor: 'pointer',
-                  }}
-                >
+              <div className="cluster" style={{ justifyContent: 'flex-end' }}>
+                <AppButton type="button" variant="secondary" onClick={() => { setShowCreateModal(false); setCreateError(null); }}>
                   Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleCreateNote()}
-                  disabled={creating}
-                  style={{
-                    ...primaryButtonStyle,
-                    opacity: creating ? 0.7 : 1,
-                    cursor: creating ? 'not-allowed' : 'pointer',
-                  }}
-                >
+                </AppButton>
+                <AppButton type="button" onClick={() => void handleCreateNote()} disabled={creating}>
                   {creating ? 'Creating...' : 'Create Note'}
-                </button>
+                </AppButton>
               </div>
             </div>
           </div>
@@ -411,161 +346,71 @@ export default function NotesList() {
       )}
 
       {showUploadModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.5)',
-          zIndex: 1000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '1rem',
-        }}>
-          <div style={{
-            background: 'white',
-            borderRadius: '16px',
-            padding: '2rem',
-            maxWidth: '600px',
-            width: '100%',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-          }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: '1rem',
-              marginBottom: '1rem',
-            }}>
+        <div className="modal-backdrop" role="presentation">
+          <div className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="upload-note-title" style={{ width: 'min(720px, 100%)' }}>
+            <div className="split mb-4">
               <div>
-                <h2 style={{ margin: 0, color: '#1A202C' }}>Upload Notes</h2>
-                <p style={{ margin: '0.35rem 0 0', color: '#718096' }}>
-                  Save a text note directly, or let AI analyze an uploaded file for you.
-                </p>
+                <h2 id="upload-note-title">Upload Notes</h2>
+                <p className="muted">Save a text note directly, or let AI analyze an uploaded file.</p>
               </div>
-              <button
-                type="button"
-                onClick={closeUploadModal}
-                style={{
-                  border: '1px solid #CBD5E0',
-                  borderRadius: '10px',
-                  background: 'white',
-                  padding: '0.6rem 1rem',
-                  color: '#4A5568',
-                  cursor: 'pointer',
-                }}
-              >
-                Close
-              </button>
+              <AppButton type="button" variant="secondary" onClick={closeUploadModal}>Close</AppButton>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <section>
-                <h3 style={{ margin: '0 0 0.75rem', color: '#2D3748', fontSize: '1rem' }}>
-                  Direct text upload
-                </h3>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '0.4rem', color: '#4A5568', fontWeight: 600 }}>
-                      Course
-                    </label>
-                    <select
-                      value={uploadForm.courseId}
-                      onChange={(event) => setUploadForm((current) => ({ ...current, courseId: event.target.value }))}
-                      disabled={courses.length === 0}
-                      style={{
-                        width: '100%',
-                        padding: '0.75rem',
-                        border: '1px solid #E2E8F0',
-                        borderRadius: '10px',
-                        outline: 'none',
-                        background: courses.length === 0 ? '#F7FAFC' : 'white',
-                      }}
-                    >
-                      <option value="">Select a course</option>
-                      {courses.map((course) => (
-                        <option key={course.id} value={course.id}>
-                          {course.title}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '0.4rem', color: '#4A5568', fontWeight: 600 }}>
-                      Text or Markdown file
-                    </label>
-                    <input
-                      type="file"
-                      accept=".txt,.md,text/plain,text/markdown"
-                      onChange={(event) => setUploadForm((current) => ({
-                        ...current,
-                        file: event.target.files?.[0] ?? null,
-                      }))}
-                      style={{
-                        width: '100%',
-                        padding: '0.75rem',
-                        border: '1px solid #E2E8F0',
-                        borderRadius: '10px',
-                      }}
-                    />
-                    <p style={{ margin: '0.4rem 0 0', color: '#718096', fontSize: '0.85rem' }}>
-                      Supports .txt and .md files up to 2MB.
-                    </p>
-                  </div>
-
-                  {courses.length === 0 && (
-                    <div style={{
-                      padding: '0.75rem 1rem',
-                      borderRadius: '10px',
-                      background: '#FFFBEB',
-                      color: '#92400E',
-                      border: '1px solid #FDE68A',
-                    }}>
-                      Create a course before uploading a note.
-                    </div>
-                  )}
-
-                  {uploadError && (
-                    <div style={{
-                      padding: '0.75rem 1rem',
-                      borderRadius: '10px',
-                      background: '#FFF5F5',
-                      color: '#C53030',
-                      border: '1px solid #FED7D7',
-                    }}>
-                      {uploadError}
-                    </div>
-                  )}
-
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    <button
-                      type="button"
-                      onClick={() => void handleTextUpload()}
-                      disabled={uploadingText || courses.length === 0}
-                      style={{
-                        ...primaryButtonStyle,
-                        opacity: uploadingText || courses.length === 0 ? 0.7 : 1,
-                        cursor: uploadingText || courses.length === 0 ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      {uploadingText ? 'Uploading...' : 'Upload Text/Markdown'}
-                    </button>
-                  </div>
+            <div className="stack">
+              <Card className="stack">
+                <h3>Direct text upload</h3>
+                <div>
+                  <label htmlFor="upload-course" className="form-label">Course</label>
+                  <select
+                    id="upload-course"
+                    value={uploadForm.courseId}
+                    onChange={(event) => setUploadForm((current) => ({ ...current, courseId: event.target.value }))}
+                    disabled={courses.length === 0}
+                  >
+                    <option value="">Select a course</option>
+                    {courses.map((course) => (
+                      <option key={course.id} value={course.id}>
+                        {course.title}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              </section>
 
-              <section style={{
-                borderTop: '1px solid #E2E8F0',
-                paddingTop: '1rem',
-              }}>
-                <h3 style={{ margin: '0 0 0.75rem', color: '#2D3748', fontSize: '1rem' }}>
-                  AI upload and analysis
-                </h3>
+                <div>
+                  <label htmlFor="upload-file" className="form-label">Text or Markdown file</label>
+                  <input
+                    id="upload-file"
+                    type="file"
+                    accept=".txt,.md,text/plain,text/markdown"
+                    onChange={(event) => setUploadForm((current) => ({
+                      ...current,
+                      file: event.target.files?.[0] ?? null,
+                    }))}
+                  />
+                  <p className="muted text-small mt-3">Supports .txt and .md files up to 2MB.</p>
+                </div>
+
+                {courses.length === 0 && (
+                  <div className="alert alert-warning">Create a course before uploading a note.</div>
+                )}
+
+                {uploadError && <ErrorState message={uploadError} />}
+
+                <div className="cluster" style={{ justifyContent: 'flex-end' }}>
+                  <AppButton
+                    type="button"
+                    onClick={() => void handleTextUpload()}
+                    disabled={uploadingText || courses.length === 0}
+                  >
+                    {uploadingText ? 'Uploading...' : 'Upload Text/Markdown'}
+                  </AppButton>
+                </div>
+              </Card>
+
+              <Card className="stack">
+                <h3>AI upload and analysis</h3>
                 <SmartUpload />
-              </section>
+              </Card>
             </div>
           </div>
         </div>

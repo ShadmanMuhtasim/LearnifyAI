@@ -4,7 +4,7 @@
 
 [![Backend Build](https://img.shields.io/badge/backend-passing-brightgreen)]()
 [![Frontend Build](https://img.shields.io/badge/frontend-passing-brightgreen)]()
-[![Milestone](https://img.shields.io/badge/milestone-6R%20verified-brightgreen)]()
+[![Milestone](https://img.shields.io/badge/milestone-M8.3%20UI%20polish-brightgreen)]()
 
 ---
 
@@ -106,7 +106,7 @@ Learnify.Client          → React + TypeScript frontend (Vite)
 | Delete Course (owner-only) | ✅ | ✅ | ✅ Complete |
 | Edit / Update Course | ✅ | ✅ | ✅ Complete |
 | Course Detail Page | ✅ | ✅ | ✅ Complete |
-| Course Search & Filter | ❌ | ❌ | ❌ Not Started |
+| Course Search & Filter | ❌ | ✅ | 🔄 Frontend-only |
 | Course Sorting | ❌ | ❌ | ❌ Not Started |
 | Course Cover Image | ❌ | ❌ | ❌ Not Started |
 | Course Progress Indicator | ❌ | ❌ | ❌ Not Started |
@@ -124,9 +124,9 @@ Learnify.Client          → React + TypeScript frontend (Vite)
 | PDF File Upload | 🔄 | ✅ | 🔄 Partial - AI analyze only, no real PDF text extraction |
 | Drag-and-Drop Upload UI | 🔄 | 🔄 | 🔄 Partial |
 | Markdown Rendering | ❌ | ❌ | ❌ Not Started |
-| Note Search | ❌ | ❌ | ❌ Not Started |
-| Folder Organization | ❌ | ❌ | ❌ Not Started |
-| Note Tags | ❌ | ❌ | ❌ Not Started |
+| Note Search | ❌ | ✅ | 🔄 Frontend-only |
+| Folder Organization | ❌ | 🔄 | 🔄 Visual filter only |
+| Note Tags | ❌ | 🔄 | 🔄 Visual chips only |
 
 ---
 
@@ -142,7 +142,7 @@ Learnify.Client          → React + TypeScript frontend (Vite)
 | Per-User AI Provider Settings | ✅ | ✅ | ✅ Complete |
 | AI Quiz Generation | ✅ | ✅ | ✅ Complete |
 | AI Study Plan Generation | ❌ | ❌ | ❌ Not Started |
-| AI Important Concepts | ❌ | ❌ | ❌ Not Started |
+| AI Important Concepts | ❌ | 🔄 | 🔄 Placeholder only |
 | AI Exam Questions | ❌ | ❌ | ❌ Not Started |
 | Ask AI About This Note | ❌ | ❌ | ❌ Not Started |
 | AI Tutor (Chat Interface) | ❌ | ❌ | ❌ Not Started |
@@ -211,7 +211,7 @@ Learnify.Client          → React + TypeScript frontend (Vite)
 | Topic Mastery Visualization | ❌ | ❌ | ❌ Not Started |
 | Time Spent Studying | ❌ | ❌ | ❌ Not Started |
 | Knowledge Growth Trend | ❌ | ❌ | ❌ Not Started |
-| Learning Heatmap | ❌ | ❌ | ❌ Not Started |
+| Learning Heatmap | ❌ | 🔄 | 🔄 Static/placeholder UI |
 | Weekly / Monthly Reports | ❌ | ❌ | ❌ Not Started |
 | Course Completion Stats | ❌ | ❌ | ❌ Not Started |
 
@@ -281,7 +281,7 @@ Learnify.Client          → React + TypeScript frontend (Vite)
 | Responsive Layout (Mobile + Tablet) | ❌ Not Started |
 | Loading Skeleton States | ❌ Not Started |
 | Toast Notification System | ❌ Not Started |
-| Global Sidebar Navigation | ❌ Not Started |
+| Global Sidebar Navigation | ✅ Complete |
 | Docker / docker-compose | ❌ Not Started |
 | CI/CD Pipeline | ❌ Not Started |
 
@@ -322,6 +322,7 @@ Automated tests must not require a local LLM server. `LocalOpenAI` and `Ollama` 
 ```bash
 dotnet build --no-restore
 dotnet test --no-restore
+dotnet list package --vulnerable --include-transitive
 
 cd Learnify.Client
 npm test -- --run
@@ -329,6 +330,16 @@ npm run build
 ```
 
 Optional runtime smoke verification may use a real OpenAI-compatible local server at `http://127.0.0.1:8080`. If that server is not reachable, start it before retrying the runtime smoke.
+
+The solution-level vulnerability scan passed in M8.2 with no vulnerable packages reported. If NuGet cache metadata issues recur locally, clear NuGet caches and rerun the audit per project:
+
+```bash
+dotnet list Learnify.Core package --vulnerable --include-transitive
+dotnet list Learnify.Application package --vulnerable --include-transitive
+dotnet list Learnify.Infrastructure package --vulnerable --include-transitive
+dotnet list Learnify.Web package --vulnerable --include-transitive
+dotnet list Learnify.Tests package --vulnerable --include-transitive
+```
 
 ---
 
@@ -393,7 +404,7 @@ LearnifyAI/
 | M5 — AI Integration | Multi-provider AI, summary, flashcards | ✅ Done |
 | M6 — Smart Learning Core | Course CRUD, `.txt/.md` upload, per-user settings, flashcard polish | ✅ M6R verified; PDF extraction remains future work |
 | M7 — Quiz Engine | AI-generated quizzes, taking flow, attempts, scoring, modes, timer, retry, results | ✅ Complete for M7.1 quiz polish; advanced analytics/adaptive features remain future work |
-| M8 — Testing & QA Hardening | Backend unit/provider tests, frontend component tests, builds, vulnerability audit | 🔄 Partial - automated tests pass; integration/E2E and vulnerability remediation remain |
+| M8 — Testing, QA & UI Polish | Backend unit/provider/integration tests, frontend page tests, builds, vulnerability audit, Stitch-inspired UI polish | ✅ M8.3 UI polish complete; Playwright E2E remains |
 | M9 — Analytics & Achievements | Progress tracking, gamification | ⏳ Planned |
 | M10 — Dashboard & UI Polish | Full dashboard, dark mode, animations | ⏳ Planned |
 | M11 — AI Tutor & Study Planner | Chat interface, calendar scheduler | ⏳ Planned |

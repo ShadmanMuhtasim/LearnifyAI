@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useAuthStore } from '../store/authStore';
 import { Link } from 'react-router-dom';
+import { useAuthStore } from '../store/authStore';
 import apiClient from '../services/api';
+import { Badge, Card, PageHeader, StatCard } from '../components/UI/Primitives';
 
 interface Course {
   id: string;
@@ -11,6 +12,12 @@ interface ApiResponse<T> {
   success: boolean;
   data: T;
 }
+
+const heatmapRows = [
+  { label: 'Morning', levels: [1, 2, 1, 2, 4, 1] },
+  { label: 'Afternoon', levels: [1, 3, 2, 1, 1, 2] },
+  { label: 'Evening', levels: [2, 1, 4, 3, 1, 1] },
+];
 
 export default function Dashboard() {
   const { user, isAuthenticated } = useAuthStore();
@@ -45,141 +52,84 @@ export default function Dashboard() {
   }, [isAuthenticated]);
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%)',
-      padding: '2rem 1rem'
-    }}>
-      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
-        {/* Welcome Header */}
-        <div style={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          borderRadius: '16px',
-          padding: '2.5rem',
-          color: 'white',
-          marginBottom: '2rem',
-          boxShadow: '0 10px 40px rgba(102, 126, 234, 0.3)'
-        }}>
-          <h1 style={{ margin: 0, fontSize: '2rem', fontWeight: 700 }}>
-            Welcome back, {user?.name || 'User'}! 👋
-          </h1>
-          <p style={{ margin: '0.5rem 0 0', opacity: 0.9, fontSize: '1.1rem' }}>
-            Role: <span style={{
-              display: 'inline-block',
-              background: 'rgba(255,255,255,0.2)',
-              padding: '0.25rem 0.75rem',
-              borderRadius: '20px',
-              fontSize: '0.9rem',
-              fontWeight: 600
-            }}>
-              {user?.role || 'Student'}
-            </span>
-          </p>
-        </div>
+    <div className="stack">
+      <PageHeader
+        eyebrow="Dashboard"
+        title={`Good morning, ${user?.name || 'Learner'}.`}
+        subtitle="Ready to level up today?"
+        actions={<Badge tone="primary">Based on available data</Badge>}
+      />
 
-        {/* Stats Cards */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-          gap: '1.5rem',
-          marginBottom: '2rem'
-        }}>
-          <div style={{
-            background: 'white',
-            borderRadius: '12px',
-            padding: '1.5rem',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-            borderLeft: '4px solid #667eea'
-          }}>
-            <div style={{ color: '#666', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem' }}>
-              Total Courses
-            </div>
-            <div style={{ fontSize: '2rem', fontWeight: 700, color: '#333' }}>
-              {courseCount}
-            </div>
-          </div>
-          <div style={{
-            background: 'white',
-            borderRadius: '12px',
-            padding: '1.5rem',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-            borderLeft: '4px solid #764ba2'
-          }}>
-            <div style={{ color: '#666', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem' }}>
-              Total Notes
-            </div>
-            <div style={{ fontSize: '2rem', fontWeight: 700, color: '#333' }}>
-              0
-            </div>
-          </div>
-          <div style={{
-            background: 'white',
-            borderRadius: '12px',
-            padding: '1.5rem',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-            borderLeft: '4px solid #f093fb'
-          }}>
-            <div style={{ color: '#666', fontSize: '0.875rem', fontWeight: 500, marginBottom: '0.5rem' }}>
-              AI Features
-            </div>
-            <div style={{ fontSize: '2rem', fontWeight: 700, color: '#333' }}>
-              4
-            </div>
-          </div>
-        </div>
+      <div className="grid grid-4">
+        <StatCard label="Daily Streak" value="5" detail="days, coming soon" tone="warning" />
+        <StatCard label="Weekly Progress" value="82%" detail="visual placeholder" tone="primary" />
+        <StatCard label="Courses" value={courseCount} detail="active learning paths" tone="success" />
+        <StatCard label="AI Tools" value="4" detail="summary, cards, tips, quizzes" tone="default" />
+      </div>
 
-        {/* Quick Actions */}
-        <h2 style={{ color: '#333', marginBottom: '1rem' }}>Quick Actions</h2>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: '1rem'
-        }}>
-          <Link to="/courses" style={{
-            display: 'block',
-            padding: '1.25rem',
-            background: 'white',
-            borderRadius: '12px',
-            textDecoration: 'none',
-            color: '#333',
-            fontWeight: 600,
-            fontSize: '1rem',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-            transition: 'transform 0.2s, box-shadow 0.2s',
-            textAlign: 'center'
-          }}>
-            📚 Browse Courses
-          </Link>
-          <Link to="/notes" style={{
-            display: 'block',
-            padding: '1.25rem',
-            background: 'white',
-            borderRadius: '12px',
-            textDecoration: 'none',
-            color: '#333',
-            fontWeight: 600,
-            fontSize: '1rem',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-            transition: 'transform 0.2s, box-shadow 0.2s',
-            textAlign: 'center'
-          }}>
-            📝 My Notes
-          </Link>
-          <Link to="/flashcards" style={{
-            display: 'block',
-            padding: '1.25rem',
-            background: 'white',
-            borderRadius: '12px',
-            textDecoration: 'none',
-            color: '#333',
-            fontWeight: 600,
-            fontSize: '1rem',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-            transition: 'transform 0.2s, box-shadow 0.2s',
-            textAlign: 'center'
-          }}>
-            🤖 AI Tools
-          </Link>
+      <div className="page-two-column">
+        <Card>
+          <div className="split mb-4">
+            <div>
+              <h2>Weekly Learning Heatmap</h2>
+              <p className="muted text-small">A visual study rhythm guide; backend analytics are still future work.</p>
+            </div>
+            <Badge tone="muted">Coming soon</Badge>
+          </div>
+
+          <div className="heatmap">
+            <div className="heatmap-grid">
+              <span />
+              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
+                <span key={day} className={`heatmap-label${index > 2 ? ' hide-mobile' : ''}`}>{day}</span>
+              ))}
+              {heatmapRows.map((row) => (
+                <div key={row.label} style={{ display: 'contents' }}>
+                  <span className="heatmap-label">{row.label}</span>
+                  {row.levels.map((level, index) => (
+                    <span
+                      key={`${row.label}-${index}`}
+                      className={`heatmap-cell level-${level}${index > 2 ? ' hide-mobile' : ''}`}
+                      aria-label={`${row.label} level ${level}`}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+
+        <div className="stack">
+          <Card>
+            <div className="eyebrow mb-3">Quick Actions</div>
+            <div className="grid grid-2">
+              <Link to="/quizzes" className="ui-button ui-button-secondary">New Quiz</Link>
+              <Link to="/notes" className="ui-button ui-button-secondary">Upload Note</Link>
+              <Link to="/flashcards" className="ui-button ui-button-secondary">Review Flashcards</Link>
+              <Link to="/settings" className="ui-button ui-button-secondary">Open Settings</Link>
+            </div>
+          </Card>
+
+          <Card style={{ background: 'linear-gradient(135deg, #4f46e5, #3525cd)', color: '#ffffff' }}>
+            <div className="eyebrow" style={{ color: 'rgba(255,255,255,0.72)' }}>AI Recommendation</div>
+            <h2 style={{ color: '#ffffff', marginTop: 10 }}>Review your latest notes</h2>
+            <p style={{ color: 'rgba(255,255,255,0.82)', marginTop: 8 }}>
+              Use flashcards or a generated quiz when your note content is ready for AI actions.
+            </p>
+            <Link to="/flashcards" className="ui-button" style={{ marginTop: 16, background: '#ffffff', color: '#3525cd' }}>
+              Start Session
+            </Link>
+          </Card>
+
+          <Card>
+            <div className="split">
+              <span className="eyebrow">Recent Notes</span>
+              <Link to="/notes" className="text-small" style={{ color: 'var(--primary)', textDecoration: 'none' }}>
+                View all
+              </Link>
+            </div>
+            <p className="muted mt-3">Recent-note analytics are not available yet. Open Notes to continue studying.</p>
+          </Card>
         </div>
       </div>
     </div>

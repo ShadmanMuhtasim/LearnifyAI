@@ -1,9 +1,26 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { getActiveProvider, type ActiveProviderResponse } from '../../services/aiService';
 
 interface AiProviderBadgeProps {
   onProviderChange?: (provider: ActiveProviderResponse) => void;
 }
+
+const providerLabel = (name: string) => {
+  switch (name.toLowerCase()) {
+    case 'gemini':
+      return { icon: 'G', label: 'Gemini 3.5 Flash' };
+    case 'openai':
+      return { icon: 'O', label: 'OpenAI' };
+    case 'claude':
+      return { icon: 'C', label: 'Claude' };
+    case 'ollama':
+      return { icon: 'OL', label: 'Ollama' };
+    case 'localopenai':
+      return { icon: 'LC', label: 'Local OpenAI / llama.cpp' };
+    default:
+      return { icon: 'AI', label: name };
+  }
+};
 
 const AiProviderBadge: React.FC<AiProviderBadgeProps> = ({ onProviderChange }) => {
   const [provider, setProvider] = useState<ActiveProviderResponse | null>(null);
@@ -25,143 +42,34 @@ const AiProviderBadge: React.FC<AiProviderBadgeProps> = ({ onProviderChange }) =
   }, [onProviderChange]);
 
   useEffect(() => {
-    fetchProvider();
+    void fetchProvider();
   }, [fetchProvider]);
 
   if (loading) {
     return (
-      <div style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '8px',
-        padding: '6px 12px',
-        backgroundColor: '#f1f5f9',
-        borderRadius: '20px',
-        fontSize: '13px',
-        color: '#94a3b8'
-      }}>
-        <div style={{
-          width: '8px',
-          height: '8px',
-          borderRadius: '50%',
-          backgroundColor: '#cbd5e1',
-          animation: 'pulse 1s ease-in-out infinite'
-        }} />
+      <div className="provider-badge">
+        <span className="spinner" style={{ width: 12, height: 12, borderWidth: 2 }} aria-hidden="true" />
         Loading AI Provider...
-        <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
       </div>
     );
   }
 
   if (error || !provider) {
-    return (
-      <div style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '8px',
-        padding: '6px 12px',
-        backgroundColor: '#fff5f5',
-        borderRadius: '20px',
-        fontSize: '13px',
-        color: '#c53030',
-        border: '1px solid #fed7d7'
-      }}>
-        ⚠️ Provider unavailable
-      </div>
-    );
+    return <div className="provider-badge">Provider unavailable</div>;
   }
 
-  const getProviderConfig = (name: string): {
-    icon: string;
-    label: string;
-    color: string;
-    bgColor: string;
-    borderColor: string;
-  } => {
-    switch (name.toLowerCase()) {
-      case 'gemini':
-        return {
-          icon: '✨',
-          label: 'Gemini 3.5 Flash',
-          color: '#1e40af',
-          bgColor: '#eff6ff',
-          borderColor: '#93c5fd'
-        };
-      case 'openai':
-        return {
-          icon: '🤖',
-          label: 'OpenAI',
-          color: '#166534',
-          bgColor: '#f0fdf4',
-          borderColor: '#86efac'
-        };
-      case 'ollama':
-        return {
-          icon: '🏠',
-          label: 'Ollama',
-          color: '#7c2d12',
-          bgColor: '#fff7ed',
-          borderColor: '#fdba74'
-        };
-      case 'localopenai':
-        return {
-          icon: '🏠',
-          label: 'Local OpenAI / llama.cpp',
-          color: '#155e75',
-          bgColor: '#ecfeff',
-          borderColor: '#67e8f9'
-        };
-      case 'claude':
-        return {
-          icon: '⚡',
-          label: 'Claude',
-          color: '#581c87',
-          bgColor: '#faf5ff',
-          borderColor: '#d8b4fe'
-        };
-      default:
-        return {
-          icon: '🔮',
-          label: name,
-          color: '#4b5563',
-          bgColor: '#f9fafb',
-          borderColor: '#e5e7eb'
-        };
-    }
-  };
-
-  const config = getProviderConfig(provider.activeProvider);
+  const config = providerLabel(provider.activeProvider);
   const isLocalProvider = ['ollama', 'localopenai'].includes(provider.activeProvider.toLowerCase());
 
   return (
-    <div style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '8px',
-      padding: '6px 14px',
-      backgroundColor: config.bgColor,
-      borderRadius: '20px',
-      fontSize: '13px',
-      color: config.color,
-      border: `1px solid ${config.borderColor}`,
-      fontWeight: 500,
-      boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-    }}>
-      <span>{config.icon}</span>
-      <span>Powered by {config.label}</span>
-      <span style={{
-        opacity: 0.7,
-        fontWeight: 400
-      }}>
-        ({provider.model})
+    <div className="provider-badge">
+      <span className="nav-icon" style={{ width: 22, height: 22, flexBasis: 22 }} aria-hidden="true">
+        {config.icon}
       </span>
+      <span>Powered by {config.label}</span>
+      <span className="provider-badge-model">({provider.model})</span>
       {isLocalProvider && provider.baseUrl && (
-        <span style={{
-          opacity: 0.7,
-          fontWeight: 400
-        }}>
-          {provider.baseUrl}
-        </span>
+        <span className="provider-badge-model">{provider.baseUrl}</span>
       )}
     </div>
   );

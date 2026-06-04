@@ -3,7 +3,7 @@ using Learnify.Application.Services;
 using Learnify.Core.Entities;
 using Learnify.Core.Interfaces;
 using Learnify.Core.Models;
-using Moq;
+using System.Linq.Expressions;
 using Xunit;
 
 namespace Learnify.Tests;
@@ -76,7 +76,7 @@ public class QuizServiceTests
         });
 
         Assert.Null(result);
-        setup.Attempts.Verify(repo => repo.AddAsync(It.IsAny<QuizAttempt>()), Times.Never);
+        Assert.Equal(0, setup.Attempts.AddedCount);
     }
 
     [Fact]
@@ -103,27 +103,15 @@ public class QuizServiceTests
         var courseId = Guid.NewGuid();
         Quiz? capturedQuiz = null;
 
-        var notes = new Mock<INoteRepository>();
-        notes.Setup(repo => repo.GetByIdAsync(noteId))
-            .ReturnsAsync(new Note { Id = noteId, CourseId = courseId, Content = "Cellular respiration content." });
-
-        var courses = new Mock<ICourseRepository>();
-        courses.Setup(repo => repo.GetByIdAsync(courseId))
-            .ReturnsAsync(new Course { Id = courseId, UserId = userId, Title = "Biology" });
-
-        var quizzes = new Mock<IQuizRepository>();
-        quizzes.Setup(repo => repo.AddAsync(It.IsAny<Quiz>()))
-            .Callback<Quiz>(quiz => capturedQuiz = quiz)
-            .Returns(Task.CompletedTask);
-
-        var ai = new Mock<IAiService>();
-        ai.Setup(service => service.GenerateQuizAsync(
-                It.IsAny<string>(),
-                It.IsAny<IReadOnlyList<string>>(),
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new GeneratedQuizResult
+        var notes = new FakeNoteRepository(new Note { Id = noteId, CourseId = courseId, Content = "Cellular respiration content." });
+        var courses = new FakeCourseRepository(new Course { Id = courseId, UserId = userId, Title = "Biology" });
+        var quizzes = new FakeQuizRepository
+        {
+            OnAdd = quiz => capturedQuiz = quiz
+        };
+        var ai = new FakeAiService
+        {
+            QuizResult = new GeneratedQuizResult
             {
                 Title = "Generated",
                 Questions = new List<GeneratedQuizQuestionResult>
@@ -142,13 +130,14 @@ public class QuizServiceTests
                         CorrectAnswer = ""
                     }
                 }
-            });
+            }
+        };
 
         var unitOfWork = BuildUnitOfWork(
-            notes: notes.Object,
-            courses: courses.Object,
-            quizzes: quizzes.Object);
-        var service = new QuizService(unitOfWork.Object, ai.Object);
+            notes: notes,
+            courses: courses,
+            quizzes: quizzes);
+        var service = new QuizService(unitOfWork, ai);
 
         var dto = await service.GenerateQuizAsync(userId, new GenerateQuizRequest
         {
@@ -174,31 +163,21 @@ public class QuizServiceTests
         var noteId = Guid.NewGuid();
         var courseId = Guid.NewGuid();
 
-        var notes = new Mock<INoteRepository>();
-        notes.Setup(repo => repo.GetByIdAsync(noteId))
-            .ReturnsAsync(new Note { Id = noteId, CourseId = courseId, Content = "Content" });
-
-        var courses = new Mock<ICourseRepository>();
-        courses.Setup(repo => repo.GetByIdAsync(courseId))
-            .ReturnsAsync(new Course { Id = courseId, UserId = userId, Title = "Biology" });
-
-        var ai = new Mock<IAiService>();
-        ai.Setup(service => service.GenerateQuizAsync(
-                It.IsAny<string>(),
-                It.IsAny<IReadOnlyList<string>>(),
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new GeneratedQuizResult
+        var notes = new FakeNoteRepository(new Note { Id = noteId, CourseId = courseId, Content = "Content" });
+        var courses = new FakeCourseRepository(new Course { Id = courseId, UserId = userId, Title = "Biology" });
+        var ai = new FakeAiService
+        {
+            QuizResult = new GeneratedQuizResult
             {
                 Questions = new List<GeneratedQuizQuestionResult>
                 {
                     new() { QuestionText = "", CorrectAnswer = "" }
                 }
-            });
+            }
+        };
 
-        var unitOfWork = BuildUnitOfWork(notes: notes.Object, courses: courses.Object);
-        var service = new QuizService(unitOfWork.Object, ai.Object);
+        var unitOfWork = BuildUnitOfWork(notes: notes, courses: courses);
+        var service = new QuizService(unitOfWork, ai);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.GenerateQuizAsync(userId, new GenerateQuizRequest { NoteId = noteId }));
@@ -268,53 +247,161 @@ public class QuizServiceTests
 
     private static QuizServiceSetup BuildService(Quiz? ownedQuiz)
     {
-        var quizzes = new Mock<IQuizRepository>();
-        quizzes.Setup(repo => repo.GetOwnedQuizAsync(It.IsAny<Guid>(), It.IsAny<Guid>()))
-            .ReturnsAsync(ownedQuiz);
+        var quizzes = new FakeQuizRepository { OwnedQuiz = ownedQuiz };
+        var attempts = new FakeQuizAttemptRepository();
+        var unitOfWork = BuildUnitOfWork(quizzes: quizzes, attempts: attempts);
+        var service = new QuizService(unitOfWork, new FakeAiService());
 
-        QuizAttempt? capturedAttempt = null;
-        var attempts = new Mock<IQuizAttemptRepository>();
-        attempts.Setup(repo => repo.AddAsync(It.IsAny<QuizAttempt>()))
-            .Callback<QuizAttempt>(attempt => capturedAttempt = attempt)
-            .Returns(Task.CompletedTask);
-
-        var unitOfWork = BuildUnitOfWork(quizzes: quizzes.Object, attempts: attempts.Object);
-        var service = new QuizService(unitOfWork.Object, Mock.Of<IAiService>());
-
-        return new QuizServiceSetup(service, attempts, () => capturedAttempt);
+        return new QuizServiceSetup(service, attempts);
     }
 
-    private static Mock<IUnitOfWork> BuildUnitOfWork(
+    private static FakeUnitOfWork BuildUnitOfWork(
         INoteRepository? notes = null,
         ICourseRepository? courses = null,
         IQuizRepository? quizzes = null,
         IQuizAttemptRepository? attempts = null)
     {
-        var unitOfWork = new Mock<IUnitOfWork>();
-        unitOfWork.SetupGet(uow => uow.Notes).Returns(notes ?? Mock.Of<INoteRepository>());
-        unitOfWork.SetupGet(uow => uow.Courses).Returns(courses ?? Mock.Of<ICourseRepository>());
-        unitOfWork.SetupGet(uow => uow.Quizzes).Returns(quizzes ?? Mock.Of<IQuizRepository>());
-        unitOfWork.SetupGet(uow => uow.QuizAttempts).Returns(attempts ?? Mock.Of<IQuizAttemptRepository>());
-        unitOfWork.Setup(uow => uow.SaveChangesAsync()).ReturnsAsync(1);
-        return unitOfWork;
+        return new FakeUnitOfWork(
+            notes ?? new FakeNoteRepository(),
+            courses ?? new FakeCourseRepository(),
+            quizzes ?? new FakeQuizRepository(),
+            attempts ?? new FakeQuizAttemptRepository());
     }
 
     private sealed class QuizServiceSetup
     {
-        private readonly Func<QuizAttempt?> _getCapturedAttempt;
-
-        public QuizServiceSetup(
-            QuizService service,
-            Mock<IQuizAttemptRepository> attempts,
-            Func<QuizAttempt?> getCapturedAttempt)
+        public QuizServiceSetup(QuizService service, FakeQuizAttemptRepository attempts)
         {
             Service = service;
             Attempts = attempts;
-            _getCapturedAttempt = getCapturedAttempt;
         }
 
         public QuizService Service { get; }
-        public Mock<IQuizAttemptRepository> Attempts { get; }
-        public QuizAttempt? CapturedAttempt => _getCapturedAttempt();
+        public FakeQuizAttemptRepository Attempts { get; }
+        public QuizAttempt? CapturedAttempt => Attempts.CapturedAttempt;
+    }
+
+    private abstract class FakeRepository<T> : IRepository<T> where T : class
+    {
+        public virtual Task<IEnumerable<T>> GetAllAsync() => Task.FromResult(Enumerable.Empty<T>());
+        public virtual Task<IEnumerable<T>> GetAllNoTrackingAsync() => Task.FromResult(Enumerable.Empty<T>());
+        public virtual Task<T?> GetByIdAsync(object id) => Task.FromResult<T?>(null);
+        public virtual Task<IEnumerable<T>> FindAsync(Expression<Func<T, bool>> predicate) => Task.FromResult(Enumerable.Empty<T>());
+        public virtual Task<T?> FirstOrDefaultAsync(Expression<Func<T, bool>> predicate) => Task.FromResult<T?>(null);
+        public virtual Task<bool> AnyAsync(Expression<Func<T, bool>> predicate) => Task.FromResult(false);
+        public virtual Task<int> CountAsync(Expression<Func<T, bool>> predicate) => Task.FromResult(0);
+        public virtual Task AddAsync(T entity) => Task.CompletedTask;
+        public virtual Task AddRangeAsync(IEnumerable<T> entities) => Task.CompletedTask;
+        public virtual void Update(T entity) { }
+        public virtual void Remove(T entity) { }
+        public virtual Task DeleteAsync(Guid id) => Task.CompletedTask;
+        public virtual void RemoveRange(IEnumerable<T> entities) { }
+    }
+
+    private sealed class FakeNoteRepository : FakeRepository<Note>, INoteRepository
+    {
+        private readonly Note? _note;
+
+        public FakeNoteRepository(Note? note = null)
+        {
+            _note = note;
+        }
+
+        public override Task<Note?> GetByIdAsync(object id)
+            => Task.FromResult(_note != null && Equals(_note.Id, id) ? _note : null);
+
+        public Task<IEnumerable<Note>> FindByCourseIdAsync(Guid courseId) => Task.FromResult(Enumerable.Empty<Note>());
+        public Task<IEnumerable<Note>> FindByUserIdAsync(Guid userId) => Task.FromResult(Enumerable.Empty<Note>());
+        public Task<int> CountByCourseIdAsync(Guid courseId) => Task.FromResult(0);
+    }
+
+    private sealed class FakeCourseRepository : FakeRepository<Course>, ICourseRepository
+    {
+        private readonly Course? _course;
+
+        public FakeCourseRepository(Course? course = null)
+        {
+            _course = course;
+        }
+
+        public override Task<Course?> GetByIdAsync(object id)
+            => Task.FromResult(_course != null && Equals(_course.Id, id) ? _course : null);
+
+        public Task<IEnumerable<Course>> FindByUserIdAsync(Guid userId) => Task.FromResult(Enumerable.Empty<Course>());
+        public Task<IEnumerable<Course>> SearchByTitleAsync(string searchTerm) => Task.FromResult(Enumerable.Empty<Course>());
+        public Task<int> CountByUserIdAsync(Guid userId) => Task.FromResult(0);
+    }
+
+    private sealed class FakeQuizRepository : FakeRepository<Quiz>, IQuizRepository
+    {
+        public Quiz? OwnedQuiz { get; set; }
+        public Action<Quiz>? OnAdd { get; set; }
+
+        public override Task AddAsync(Quiz entity)
+        {
+            OnAdd?.Invoke(entity);
+            return Task.CompletedTask;
+        }
+
+        public Task<IEnumerable<Quiz>> FindByUserIdAsync(Guid userId) => Task.FromResult(Enumerable.Empty<Quiz>());
+        public Task<Quiz?> GetOwnedQuizAsync(Guid quizId, Guid userId) => Task.FromResult(OwnedQuiz);
+    }
+
+    private sealed class FakeQuizAttemptRepository : FakeRepository<QuizAttempt>, IQuizAttemptRepository
+    {
+        public int AddedCount { get; private set; }
+        public QuizAttempt? CapturedAttempt { get; private set; }
+
+        public override Task AddAsync(QuizAttempt entity)
+        {
+            AddedCount++;
+            CapturedAttempt = entity;
+            return Task.CompletedTask;
+        }
+
+        public Task<IEnumerable<QuizAttempt>> FindByQuizAndUserAsync(Guid quizId, Guid userId) => Task.FromResult(Enumerable.Empty<QuizAttempt>());
+        public Task<QuizAttempt?> GetOwnedAttemptAsync(Guid attemptId, Guid userId) => Task.FromResult<QuizAttempt?>(null);
+    }
+
+    private sealed class FakeUnitOfWork : IUnitOfWork
+    {
+        public FakeUnitOfWork(
+            INoteRepository notes,
+            ICourseRepository courses,
+            IQuizRepository quizzes,
+            IQuizAttemptRepository attempts)
+        {
+            Notes = notes;
+            Courses = courses;
+            Quizzes = quizzes;
+            QuizAttempts = attempts;
+        }
+
+        public IUserRepository Users => null!;
+        public ICourseRepository Courses { get; }
+        public INoteRepository Notes { get; }
+        public ILessonRepository Lessons => null!;
+        public IUserAiSettingsRepository UserAiSettings => null!;
+        public IQuizRepository Quizzes { get; }
+        public IQuizAttemptRepository QuizAttempts { get; }
+        public Task<int> SaveChangesAsync() => Task.FromResult(1);
+        public Task BeginTransactionAsync() => Task.CompletedTask;
+        public Task CommitTransactionAsync() => Task.CompletedTask;
+        public void RollbackTransaction() { }
+        public void Dispose() { }
+    }
+
+    private sealed class FakeAiService : IAiService
+    {
+        public GeneratedQuizResult QuizResult { get; set; } = new();
+
+        public Task<string> SummarizeNoteAsync(string content, CancellationToken ct = default) => Task.FromResult("");
+        public Task<IReadOnlyList<FlashcardResult>> GenerateFlashcardsAsync(string content, int count = 5, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<FlashcardResult>>(Array.Empty<FlashcardResult>());
+        public Task<GeneratedQuizResult> GenerateQuizAsync(string content, IReadOnlyList<string> questionTypes, string difficulty, int numberOfQuestions, CancellationToken ct = default)
+            => Task.FromResult(QuizResult);
+        public Task<string> GetStudyTipsAsync(string topic, CancellationToken ct = default) => Task.FromResult("");
+        public Task<NoteAnalysisResult> AnalyzeDocumentAsync(string content, string fileName, CancellationToken ct = default)
+            => Task.FromResult(new NoteAnalysisResult());
     }
 }

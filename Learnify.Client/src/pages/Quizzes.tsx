@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import apiClient from '../services/api';
 import { quizService, type QuestionType, type Quiz } from '../services/quizService';
+import { AppButton, Badge, Card, EmptyState, ErrorState, LoadingState, PageHeader } from '../components/UI/Primitives';
 
 interface NoteOption {
   id: string;
@@ -21,24 +22,6 @@ const questionTypeOptions: Array<{ value: QuestionType; label: string }> = [
   { value: 'ShortAnswer', label: 'Short answer' },
   { value: 'FillInTheBlank', label: 'Fill-in-the-blank' },
 ];
-
-const panelStyle: React.CSSProperties = {
-  background: 'white',
-  border: '1px solid #E2E8F0',
-  borderRadius: '8px',
-  padding: '1.25rem',
-  boxShadow: '0 4px 18px rgba(15, 23, 42, 0.06)',
-};
-
-const primaryButtonStyle: React.CSSProperties = {
-  background: '#2563EB',
-  color: 'white',
-  border: 'none',
-  borderRadius: '8px',
-  padding: '0.7rem 1.1rem',
-  cursor: 'pointer',
-  fontWeight: 600,
-};
 
 export default function Quizzes() {
   const navigate = useNavigate();
@@ -125,48 +108,35 @@ export default function Quizzes() {
   };
 
   if (loading) {
-    return (
-      <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '60vh' }}>
-        <div className="spinner-border text-primary" role="status">
-          <span className="visually-hidden">Loading...</span>
-        </div>
-      </div>
-    );
+    return <LoadingState label="Loading quizzes..." />;
   }
 
   return (
-    <div style={{ maxWidth: '1080px', margin: '0 auto', padding: '2rem 1rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <div>
-          <h1 style={{ margin: 0, color: '#1A202C' }}>Quizzes</h1>
-          <p style={{ margin: '0.35rem 0 0', color: '#64748B' }}>
-            Generate and take quizzes from your saved notes.
-          </p>
+    <div className="stack">
+      <PageHeader
+        title="Quizzes"
+        subtitle="Generate practice or exam-style quizzes from your saved notes."
+        actions={<Link to="/notes" className="btn btn-outline-primary">Manage Notes</Link>}
+      />
+
+      {error && <ErrorState message={error} />}
+
+      <Card className="stack">
+        <div className="split">
+          <div>
+            <h2>Generate Quiz</h2>
+            <p className="muted mt-3">Choose a source note, difficulty, question mix, and optional timer.</p>
+          </div>
+          <Badge tone="primary">AI generated</Badge>
         </div>
-        <Link to="/notes" className="btn btn-outline-primary">Manage Notes</Link>
-      </div>
-
-      {error && <div className="alert alert-danger">{error}</div>}
-
-      <section style={{ ...panelStyle, marginBottom: '1.5rem' }}>
-        <h2 style={{ margin: '0 0 1rem', fontSize: '1.25rem', color: '#1E293B' }}>Generate Quiz</h2>
 
         {notes.length === 0 ? (
-          <div style={{ padding: '1rem', background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '8px', color: '#92400E' }}>
-            Add or upload a note before generating a quiz.
-          </div>
+          <div className="alert alert-warning">Add or upload a note before generating a quiz.</div>
         ) : (
-          <div style={{ display: 'grid', gap: '1rem' }}>
-            <div>
-              <label htmlFor="quiz-note" style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
-                Note
-              </label>
-              <select
-                id="quiz-note"
-                value={noteId}
-                onChange={(event) => setNoteId(event.target.value)}
-                style={{ width: '100%', padding: '0.7rem', borderRadius: '8px', border: '1px solid #CBD5E1' }}
-              >
+          <div className="field-grid">
+            <label>
+              <span className="form-label">Note</span>
+              <select id="quiz-note" value={noteId} onChange={(event) => setNoteId(event.target.value)}>
                 {notes.map((note) => (
                   <option key={note.id} value={note.id}>
                     {(note.courseTitle || 'Untitled course')} - {note.content.slice(0, 80)}
@@ -174,18 +144,16 @@ export default function Quizzes() {
                 ))}
               </select>
               {selectedNote && (
-                <p style={{ margin: '0.45rem 0 0', color: '#64748B', fontSize: '0.9rem' }}>
+                <p className="muted text-small mt-3">
                   {selectedNote.content.slice(0, 180)}
                   {selectedNote.content.length > 180 ? '...' : ''}
                 </p>
               )}
-            </div>
+            </label>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
-              <div>
-                <label htmlFor="quiz-count" style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
-                  Questions
-                </label>
+            <div className="grid grid-3">
+              <label>
+                <span className="form-label">Questions</span>
                 <input
                   id="quiz-count"
                   type="number"
@@ -193,28 +161,18 @@ export default function Quizzes() {
                   max={20}
                   value={numberOfQuestions}
                   onChange={(event) => setNumberOfQuestions(Number(event.target.value))}
-                  style={{ width: '100%', padding: '0.7rem', borderRadius: '8px', border: '1px solid #CBD5E1' }}
                 />
-              </div>
-              <div>
-                <label htmlFor="quiz-difficulty" style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
-                  Difficulty
-                </label>
-                <select
-                  id="quiz-difficulty"
-                  value={difficulty}
-                  onChange={(event) => setDifficulty(event.target.value)}
-                  style={{ width: '100%', padding: '0.7rem', borderRadius: '8px', border: '1px solid #CBD5E1' }}
-                >
+              </label>
+              <label>
+                <span className="form-label">Difficulty</span>
+                <select id="quiz-difficulty" value={difficulty} onChange={(event) => setDifficulty(event.target.value)}>
                   <option>Easy</option>
                   <option>Medium</option>
                   <option>Hard</option>
                 </select>
-              </div>
-              <div>
-                <label htmlFor="quiz-timer" style={{ display: 'block', marginBottom: '0.4rem', fontWeight: 600 }}>
-                  Timer
-                </label>
+              </label>
+              <label>
+                <span className="form-label">Timer</span>
                 <input
                   id="quiz-timer"
                   type="number"
@@ -223,65 +181,58 @@ export default function Quizzes() {
                   value={timeLimitMinutes}
                   onChange={(event) => setTimeLimitMinutes(event.target.value)}
                   placeholder="Optional minutes"
-                  style={{ width: '100%', padding: '0.7rem', borderRadius: '8px', border: '1px solid #CBD5E1' }}
                 />
-              </div>
+              </label>
             </div>
 
             <div>
-              <div style={{ marginBottom: '0.5rem', fontWeight: 600 }}>Question types</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div className="form-label">Question types</div>
+              <div className="cluster">
                 {questionTypeOptions.map((option) => (
-                  <label key={option.value} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <label key={option.value} className="quiz-option" style={{ width: 'auto' }}>
                     <input
                       type="checkbox"
                       checked={questionTypes.includes(option.value)}
                       onChange={() => toggleQuestionType(option.value)}
                     />
-                    {option.label}
+                    <span>{option.label}</span>
                   </label>
                 ))}
               </div>
             </div>
 
-            {generateError && <div className="alert alert-danger">{generateError}</div>}
+            {generateError && <ErrorState message={generateError} />}
 
-            <div>
-              <button
-                type="button"
-                onClick={() => void handleGenerate()}
-                disabled={generating}
-                style={{
-                  ...primaryButtonStyle,
-                  opacity: generating ? 0.7 : 1,
-                  cursor: generating ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {generating ? 'Generating...' : 'Generate Quiz'}
-              </button>
-            </div>
+            <AppButton type="button" onClick={() => void handleGenerate()} disabled={generating} style={{ justifySelf: 'start' }}>
+              {generating ? 'Generating...' : 'Generate Quiz'}
+            </AppButton>
           </div>
         )}
-      </section>
+      </Card>
 
-      <section>
-        <h2 style={{ margin: '0 0 1rem', fontSize: '1.25rem', color: '#1E293B' }}>Saved Quizzes</h2>
+      <section className="stack">
+        <div className="split">
+          <h2>Saved Quizzes</h2>
+          <Badge tone="muted">{quizzes.length} total</Badge>
+        </div>
         {quizzes.length === 0 ? (
-          <div style={panelStyle}>No quizzes yet.</div>
+          <EmptyState title="No quizzes yet" message="Generate a quiz from a saved note to start practicing." />
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem' }}>
+          <div className="grid grid-3">
             {quizzes.map((quiz) => (
-              <Link
-                key={quiz.id}
-                to={`/quizzes/${quiz.id}`}
-                style={{ ...panelStyle, display: 'block', textDecoration: 'none', color: '#1E293B' }}
-              >
-                <h3 style={{ margin: '0 0 0.45rem', fontSize: '1.05rem' }}>{quiz.title}</h3>
-                <p style={{ margin: '0 0 0.7rem', color: '#64748B' }}>{quiz.description || 'Generated quiz'}</p>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#475569', fontSize: '0.9rem' }}>
-                  <span>{quiz.difficulty}</span>
-                  <span>{quiz.questions.length} questions{quiz.timeLimitMinutes ? ` - ${quiz.timeLimitMinutes} min` : ''}</span>
-                </div>
+              <Link key={quiz.id} to={`/quizzes/${quiz.id}`} style={{ textDecoration: 'none' }}>
+                <Card className="stack">
+                  <div className="split">
+                    <h3>{quiz.title}</h3>
+                    <Badge tone={quiz.difficulty === 'Hard' ? 'warning' : 'primary'}>{quiz.difficulty}</Badge>
+                  </div>
+                  <p className="muted">{quiz.description || 'Generated quiz'}</p>
+                  <div className="cluster">
+                    <Badge tone="muted">{quiz.questions.length} questions</Badge>
+                    {quiz.timeLimitMinutes && <Badge tone="warning">{quiz.timeLimitMinutes} min</Badge>}
+                    <Badge tone="success">Practice or exam</Badge>
+                  </div>
+                </Card>
               </Link>
             ))}
           </div>
