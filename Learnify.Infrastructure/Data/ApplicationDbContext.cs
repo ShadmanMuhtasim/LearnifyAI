@@ -193,39 +193,5 @@ public class ApplicationDbContext : DbContext
                   .OnDelete(DeleteBehavior.NoAction);
         });
 
-        // Seed Data - Users with fixed GUIDs
-        modelBuilder.Entity<User>().HasData(
-            new User
-            {
-                Id = Guid.Parse("b135b12a-f7a7-45b7-8de2-1acd495220c6"),
-                FullName = "Fatima Akhtar",
-                Email = "fatima@learnify.com",
-                PasswordHash = "$2a$11$f5NYkhm9RA0scsEEhwlK2OAuozIv2nG4en571KfDQGczKY9W.X8Lq",
-                Role = "Instructor",
-                IsActive = true,
-                CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
-            },
-            new User
-            {
-                Id = Guid.Parse("04a8e75c-d34a-4505-aacd-115d52ca5b00"),
-                FullName = "Arif Hossain",
-                Email = "arif@learnify.com",
-                PasswordHash = "$2a$11$nEaM7wvmn2IjWkyvfw3m5eF4UmtNCOjNtB0AfeH1GtKNdLO/y3g3C",
-                Role = "Student",
-                IsActive = true,
-                CreatedAt = new DateTime(2026, 1, 10, 0, 0, 0, DateTimeKind.Utc)
-            },
-            new User
-            {
-                Id = Guid.Parse("ab561e92-25f7-4b5c-9349-d19de15b18f8"),
-                FullName = "Shadman Rahman",
-                Email = "shadman@learnify.com",
-                PasswordHash = "$2a$11$lqLEXMuNVPmeo9sOpXIIfuCuJD0TtVSM65/IrjohLk1blGjblEUZC",
-                Role = "Admin",
-                IsActive = true,
-                CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc)
-            }
-        );
-
     }
 }

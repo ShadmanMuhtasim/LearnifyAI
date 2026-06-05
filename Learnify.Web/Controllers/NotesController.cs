@@ -15,15 +15,27 @@ namespace Learnify.Web.Controllers;
 [Authorize]
 public class NotesController : ControllerBase
 {
+    private const int MaxSimplePdfBytes = 5 * 1024 * 1024;
+    private const string FileOnlyPdfContent =
+        "This PDF was uploaded without text extraction. Use AI Analyze on a text-based PDF or upload .txt/.md content to generate AI study tools.";
+    private const string NoReadableTextMessage =
+        "No readable text was extracted. Please upload a text-based PDF, .txt, or .md file.";
+
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
     private readonly ILogger<NotesController> _logger;
+    private readonly IPdfTextExtractor _pdfTextExtractor;
 
-    public NotesController(IUnitOfWork unitOfWork, IMapper mapper, ILogger<NotesController> logger)
+    public NotesController(
+        IUnitOfWork unitOfWork,
+        IMapper mapper,
+        ILogger<NotesController> logger,
+        IPdfTextExtractor pdfTextExtractor)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _logger = logger;
+        _pdfTextExtractor = pdfTextExtractor;
     }
 
     private Guid GetUserId()
@@ -380,6 +392,95 @@ public class NotesController : ControllerBase
         }
     }
 
+    // POST: api/notes/upload-file
+    [HttpPost("upload-file")]
+    [RequestSizeLimit(5_500_000)]
+    public async Task<ActionResult<ApiResponse<NoteDTO>>> UploadFileNote(
+        [FromForm] Guid courseId,
+        [FromForm] IFormFile file)
+    {
+        try
+        {
+            if (file == null || file.Length == 0)
+            {
+                return BadRequest(ApiResponse<NoteDTO>.BadRequest("A PDF file is required."));
+            }
+
+            if (file.Length > MaxSimplePdfBytes)
+            {
+                return BadRequest(ApiResponse<NoteDTO>.BadRequest("File too large. Maximum 5MB."));
+            }
+
+            var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (extension != ".pdf")
+            {
+                return BadRequest(ApiResponse<NoteDTO>.BadRequest("Only PDF files are supported for simple file upload."));
+            }
+
+            var userId = GetUserId();
+            var course = await _unitOfWork.Courses.GetByIdAsync(courseId);
+            if (course == null || course.UserId != userId)
+            {
+                return NotFound(ApiResponse<NoteDTO>.NotFound($"Course with ID {courseId} not found."));
+            }
+
+            string base64;
+            using (var memoryStream = new MemoryStream())
+            {
+                await file.CopyToAsync(memoryStream);
+                base64 = Convert.ToBase64String(memoryStream.ToArray());
+            }
+
+            var contentType = string.IsNullOrWhiteSpace(file.ContentType)
+                ? "application/pdf"
+                : file.ContentType;
+
+            var attachment = new NoteAttachment
+            {
+                Id = Guid.NewGuid(),
+                Name = Path.GetFileName(file.FileName),
+                Type = contentType,
+                Base64 = base64
+            };
+
+            var note = new Note
+            {
+                Id = Guid.NewGuid(),
+                Content = FileOnlyPdfContent,
+                CourseId = course.Id,
+                CreatedAt = DateTime.UtcNow,
+                Attachments = new List<NoteAttachment> { attachment }
+            };
+
+            await _unitOfWork.Notes.AddAsync(note);
+            await _unitOfWork.SaveChangesAsync();
+
+            var noteDto = new NoteDTO
+            {
+                Id = note.Id,
+                Content = note.Content,
+                CourseId = note.CourseId,
+                CourseTitle = course.Title,
+                Attachments = note.Attachments.Select(a => new NoteAttachmentDTO
+                {
+                    Id = a.Id,
+                    Name = a.Name,
+                    Type = a.Type,
+                    Base64 = a.Base64
+                }).ToList(),
+                CreatedAt = note.CreatedAt
+            };
+
+            return CreatedAtAction(nameof(GetNote), new { id = noteDto.Id },
+                ApiResponse<NoteDTO>.Ok(noteDto, "PDF uploaded successfully."));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error uploading PDF file note.");
+            return StatusCode(500, ApiResponse<NoteDTO>.BadRequest("An error occurred while uploading the PDF."));
+        }
+    }
+
     // POST: api/notes/analyze-upload
     [HttpPost("analyze-upload")]
     public async Task<ActionResult<ApiResponse<AnalyzeUploadResponse>>> AnalyzeAndSave(
@@ -400,13 +501,14 @@ public class NotesController : ControllerBase
             }
 
             var userId = GetUserId();
+            var fileBytes = Convert.FromBase64String(request.FileBase64);
 
-            var contentForAi = request.FileType.ToLowerInvariant() switch
+            var contentForAi = await ExtractAnalyzeUploadTextAsync(request, fileBytes, cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(contentForAi))
             {
-                "text" => Encoding.UTF8.GetString(Convert.FromBase64String(request.FileBase64)),
-                _ => $"[{request.FileType.ToUpperInvariant()} file: {request.FileName}]\n" +
-                     $"Base64 content excerpt:\n{request.FileBase64[..Math.Min(request.FileBase64.Length, 12000)]}"
-            };
+                return BadRequest(ApiResponse<AnalyzeUploadResponse>.BadRequest(NoReadableTextMessage));
+            }
 
             var analysis = await aiService.AnalyzeDocumentAsync(
                 contentForAi,
@@ -421,6 +523,10 @@ public class NotesController : ControllerBase
             {
                 courseName = "General Notes";
             }
+
+            var extractedSourceSection = request.FileType.Equals("pdf", StringComparison.OrdinalIgnoreCase)
+                ? $"## Extracted PDF Text\n{contentForAi}\n\n"
+                : string.Empty;
 
             var userCourses = (await _unitOfWork.Courses.FindByUserIdAsync(userId)).ToList();
             var existingCourse = userCourses.FirstOrDefault(c =>
@@ -452,6 +558,7 @@ public class NotesController : ControllerBase
                               (analysis.DetectedTopics.Any()
                                   ? $"## Detected Topics\n{string.Join("\n", analysis.DetectedTopics.Select(topic => $"- {topic}"))}\n\n"
                                   : string.Empty) +
+                              extractedSourceSection +
                               $"## Source File\n{request.FileName}";
 
             var note = new Note
@@ -492,15 +599,50 @@ public class NotesController : ControllerBase
         {
             return StatusCode(429, ApiResponse<AnalyzeUploadResponse>.BadRequest(ex.Message));
         }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "AI provider could not analyze file '{FileName}'", request.FileName);
+            return StatusCode(502, ApiResponse<AnalyzeUploadResponse>.BadRequest(ex.Message));
+        }
         catch (FormatException)
         {
             return BadRequest(ApiResponse<AnalyzeUploadResponse>.BadRequest("Invalid base64 file content."));
+        }
+        catch (InvalidDataException)
+        {
+            return BadRequest(ApiResponse<AnalyzeUploadResponse>.BadRequest(NoReadableTextMessage));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error in AnalyzeAndSave for file '{FileName}'", request.FileName);
             return StatusCode(500, ApiResponse<AnalyzeUploadResponse>.BadRequest("Failed to analyze and save document."));
         }
+    }
+
+    private async Task<string> ExtractAnalyzeUploadTextAsync(
+        AnalyzeUploadRequest request,
+        byte[] fileBytes,
+        CancellationToken cancellationToken)
+    {
+        var extension = Path.GetExtension(request.FileName).ToLowerInvariant();
+        var fileType = request.FileType.Trim().ToLowerInvariant();
+
+        if (extension is ".txt" or ".md" || fileType == "text")
+        {
+            if (extension is not ".txt" and not ".md" && fileType != "text")
+            {
+                return string.Empty;
+            }
+
+            return Encoding.UTF8.GetString(fileBytes).Trim();
+        }
+
+        if (extension == ".pdf" || fileType == "pdf" || fileType == "application/pdf")
+        {
+            return await _pdfTextExtractor.ExtractTextAsync(fileBytes, cancellationToken);
+        }
+
+        return string.Empty;
     }
 }
 

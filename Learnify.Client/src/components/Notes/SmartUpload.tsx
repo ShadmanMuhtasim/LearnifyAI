@@ -56,7 +56,7 @@ const readFileAsBase64 = (file: File): Promise<string> =>
   });
 
 const getFileType = (file: File): string => {
-  if (file.type === 'application/pdf') return 'pdf';
+  if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) return 'pdf';
   if (file.type.includes('word') || file.name.endsWith('.docx')) return 'docx';
   if (file.type.startsWith('image/')) return 'image';
   return 'text';
@@ -96,9 +96,12 @@ export default function SmartUpload() {
   };
 
   const validateFile = (file: File) => {
-    const isAllowed = ['pdf', 'docx', 'image', 'text'].includes(getFileType(file));
-    if (!isAllowed) {
-      setError('Only PDF, DOCX, PNG, JPG, and TXT files are supported.');
+  const fileName = file.name.toLowerCase();
+  const isAllowed =
+    (getFileType(file) === 'text' && (fileName.endsWith('.txt') || fileName.endsWith('.md'))) ||
+    (getFileType(file) === 'pdf' && fileName.endsWith('.pdf'));
+  if (!isAllowed) {
+      setError('Only .txt, .md, and text-based .pdf files are supported.');
       return false;
     }
 
@@ -164,7 +167,11 @@ export default function SmartUpload() {
       if (requestError?.response?.status === 429) {
         setError("You've hit the hourly limit on the default key. Switch to your own key in AI Settings.");
       } else {
-        setError(requestError?.response?.data?.message || 'Failed to analyze and save the document.');
+        setError(
+          requestError?.response?.data?.message ||
+          requestError?.response?.data?.errors?.[0] ||
+          'Failed to analyze and save the document.'
+        );
       }
     } finally {
       setIsSubmitting(false);
@@ -225,7 +232,7 @@ export default function SmartUpload() {
         <input
           ref={inputRef}
           type="file"
-          accept=".pdf,.docx,.png,.jpg,.jpeg,.txt"
+          accept=".txt,.md,.pdf"
           style={{ display: 'none' }}
           onChange={handleFileChange}
         />
@@ -234,7 +241,7 @@ export default function SmartUpload() {
           Drag and drop a file, or click to browse
         </h3>
         <p style={{ margin: 0, color: '#718096' }}>
-          PDF, DOCX, PNG, JPG, or TXT up to 5MB
+          Supports .txt, .md, and text-based .pdf files. Scanned/image-only PDFs are not supported yet.
         </p>
       </div>
 

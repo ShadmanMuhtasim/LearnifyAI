@@ -9,6 +9,11 @@ interface LocalFlashcard {
   answer: string;
 }
 
+const getApiErrorMessage = (error: unknown, fallback: string) => {
+  const apiError = error as { response?: { data?: { message?: string; errors?: string[] } }; message?: string };
+  return apiError.response?.data?.message ?? apiError.response?.data?.errors?.[0] ?? apiError.message ?? fallback;
+};
+
 export default function Flashcards() {
   const [activeTab, setActiveTab] = useState<'generate' | 'summarize' | 'tips'>('generate');
   const [showSettings, setShowSettings] = useState(false);
@@ -16,14 +21,17 @@ export default function Flashcards() {
   const [flashcardTitle, setFlashcardTitle] = useState('');
   const [generatedFlashcards, setGeneratedFlashcards] = useState<LocalFlashcard[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [flashcardError, setFlashcardError] = useState<string | null>(null);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [notesText, setNotesText] = useState('');
   const [summary, setSummary] = useState('');
   const [isSummarizing, setIsSummarizing] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [tipsTopic, setTipsTopic] = useState('');
   const [studyTips, setStudyTips] = useState('');
   const [isGeneratingTips, setIsGeneratingTips] = useState(false);
+  const [tipsError, setTipsError] = useState<string | null>(null);
 
   const handleGenerateFlashcards = async () => {
     if (!flashcardContent.trim()) {
@@ -32,6 +40,7 @@ export default function Flashcards() {
     }
 
     setIsGenerating(true);
+    setFlashcardError(null);
     try {
       const result = await generateFlashcards({
         noteId: `temp-${Date.now()}`,
@@ -45,8 +54,10 @@ export default function Flashcards() {
       setCurrentCardIndex(0);
       setIsFlipped(false);
       toast.success(`Generated ${cards.length} flashcards!`);
-    } catch {
-      toast.error('Failed to generate flashcards. Please try again.');
+    } catch (error: unknown) {
+      const message = getApiErrorMessage(error, 'Failed to generate flashcards. Please try again.');
+      setFlashcardError(message);
+      toast.error(message);
     } finally {
       setIsGenerating(false);
     }
@@ -59,6 +70,7 @@ export default function Flashcards() {
     }
 
     setIsSummarizing(true);
+    setSummaryError(null);
     try {
       const result = await summarizeNote({
         noteId: `temp-${Date.now()}`,
@@ -66,8 +78,10 @@ export default function Flashcards() {
       });
       setSummary(result.summary);
       toast.success('Notes summarized successfully!');
-    } catch {
-      toast.error('Failed to summarize notes. Please try again.');
+    } catch (error: unknown) {
+      const message = getApiErrorMessage(error, 'Failed to summarize notes. Please try again.');
+      setSummaryError(message);
+      toast.error(message);
     } finally {
       setIsSummarizing(false);
     }
@@ -80,12 +94,15 @@ export default function Flashcards() {
     }
 
     setIsGeneratingTips(true);
+    setTipsError(null);
     try {
       const result = await getStudyTips({ topic: tipsTopic });
       setStudyTips(result.tips);
       toast.success('Study tips generated successfully!');
-    } catch {
-      toast.error('Failed to generate study tips. Please try again.');
+    } catch (error: unknown) {
+      const message = getApiErrorMessage(error, 'Failed to generate study tips. Please try again.');
+      setTipsError(message);
+      toast.error(message);
     } finally {
       setIsGeneratingTips(false);
     }
@@ -161,6 +178,7 @@ export default function Flashcards() {
             <AppButton type="button" onClick={() => void handleGenerateFlashcards()} disabled={isGenerating}>
               {isGenerating ? 'Generating...' : 'Generate Flashcards'}
             </AppButton>
+            {flashcardError && <div className="alert alert-danger">{flashcardError}</div>}
           </Card>
 
           <Card className="stack">
@@ -179,7 +197,7 @@ export default function Flashcards() {
                 >
                   <div>
                     <div className="eyebrow mb-3">{isFlipped ? 'Answer' : 'Question'}</div>
-                    <p>{isFlipped ? currentCard.answer : currentCard.question}</p>
+                    <p className="ai-output-text">{isFlipped ? currentCard.answer : currentCard.question}</p>
                     <p className="muted text-small mt-3">Click to flip</p>
                   </div>
                 </button>
@@ -219,7 +237,8 @@ export default function Flashcards() {
           </Card>
           <Card className="stack">
             <h2>Summary</h2>
-            <p className="muted" style={{ whiteSpace: 'pre-wrap' }}>{summary || 'Your summary will appear here.'}</p>
+            {summaryError && <div className="alert alert-danger">{summaryError}</div>}
+            <p className="muted ai-output-text">{summary || 'Your summary will appear here.'}</p>
           </Card>
         </div>
       )}
@@ -243,7 +262,8 @@ export default function Flashcards() {
           </Card>
           <Card className="stack">
             <h2>{tipsTopic ? `Study Tips for "${tipsTopic}"` : 'Study Tips'}</h2>
-            <p className="muted" style={{ whiteSpace: 'pre-wrap' }}>{studyTips || 'Tips will appear here.'}</p>
+            {tipsError && <div className="alert alert-danger">{tipsError}</div>}
+            <p className="muted ai-output-text">{studyTips || 'Tips will appear here.'}</p>
           </Card>
         </div>
       )}

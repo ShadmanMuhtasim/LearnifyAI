@@ -16,6 +16,14 @@ namespace Learnify.Tests.Integration;
 public sealed class LearnifyWebApplicationFactory : WebApplicationFactory<global::Program>
 {
     private readonly string _databaseName = $"learnify-tests-{Guid.NewGuid()}";
+    private int _analyzeDocumentCallCount;
+
+    public int AnalyzeDocumentCallCount => _analyzeDocumentCallCount;
+
+    public void ResetAiCallCounts()
+    {
+        _analyzeDocumentCallCount = 0;
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -48,7 +56,7 @@ public sealed class LearnifyWebApplicationFactory : WebApplicationFactory<global
 
             services.AddDbContext<ApplicationDbContext>(options =>
                 options.UseInMemoryDatabase(_databaseName));
-            services.AddScoped<IAiService, FakeAiService>();
+            services.AddScoped<IAiService>(_ => new FakeAiService(this));
             services.AddSingleton<IHttpClientFactory, FakeLocalProtocolHttpClientFactory>();
 
             using var scope = services.BuildServiceProvider().CreateScope();
@@ -60,6 +68,13 @@ public sealed class LearnifyWebApplicationFactory : WebApplicationFactory<global
 
     private sealed class FakeAiService : IAiService
     {
+        private readonly LearnifyWebApplicationFactory _factory;
+
+        public FakeAiService(LearnifyWebApplicationFactory factory)
+        {
+            _factory = factory;
+        }
+
         public Task<string> SummarizeNoteAsync(string content, CancellationToken ct = default)
             => Task.FromResult("Mocked integration summary.");
 
@@ -122,13 +137,17 @@ public sealed class LearnifyWebApplicationFactory : WebApplicationFactory<global
             string content,
             string fileName,
             CancellationToken ct = default)
-            => Task.FromResult(new NoteAnalysisResult
+        {
+            Interlocked.Increment(ref _factory._analyzeDocumentCallCount);
+
+            return Task.FromResult(new NoteAnalysisResult
             {
                 SuggestedCourseName = "Mocked Course",
                 Summary = "Mocked document summary.",
                 DetectedTopics = new List<string> { "Mocked Topic" },
                 ExtractedText = content
             });
+        }
     }
 
     private sealed class FakeLocalProtocolHttpClientFactory : IHttpClientFactory

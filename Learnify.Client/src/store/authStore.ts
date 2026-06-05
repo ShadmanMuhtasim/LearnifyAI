@@ -39,9 +39,21 @@ function getAuthErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+function getPersistedAuthState() {
+  const user = authService.getCurrentUser();
+  const isAuthenticated = authService.isAuthenticated() && !!user;
+
+  return {
+    user: isAuthenticated ? user : null,
+    isAuthenticated,
+  };
+}
+
+const persistedAuthState = getPersistedAuthState();
+
 export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  isAuthenticated: false,
+  user: persistedAuthState.user,
+  isAuthenticated: persistedAuthState.isAuthenticated,
   isLoading: false,
   error: null,
 
@@ -98,14 +110,15 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({
       user: null,
       isAuthenticated: false,
+      isLoading: false,
       error: null,
     });
   },
 
   loadUser: () => {
     const user = authService.getCurrentUser();
-    const isAuth = authService.isAuthenticated();
-    set({ user, isAuthenticated: isAuth });
+    const isAuth = authService.isAuthenticated() && !!user;
+    set({ user: isAuth ? user : null, isAuthenticated: isAuth, isLoading: false });
   },
 
   clearError: () => set({ error: null }),

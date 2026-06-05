@@ -369,6 +369,20 @@ dotnet run --project Learnify.Web --launch-profile http
 - Confirmed `LocalOpenAI` can be saved with `http://127.0.0.1:8080` and `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf`, and `GET /api/ai/provider` reports `LocalOpenAI`.
 - Final LocalOpenAI runtime generation completed successfully through Learnify: provider test passed with `compatibleApi=openai`, summarize returned content, flashcards returned 2 cards, quiz generation returned 2 questions, and submitting the generated quiz scored 2/2.
 
+### M7 Re-Verification - 2026-06-05
+
+- `dotnet build --no-restore` - passed with 0 warnings and 0 errors.
+- `dotnet test --no-restore` - passed, 26 backend tests.
+- `dotnet list package --vulnerable --include-transitive` - passed; no vulnerable packages reported for Core, Application, Infrastructure, Web, or Tests.
+- `dotnet ef database update --project Learnify.Infrastructure --startup-project Learnify.Web` - passed; database was already up to date.
+- `dotnet run --project Learnify.Web --no-build --launch-profile http` - attempted; migrations ran, then startup could not bind because another Learnify.Web instance was already listening on `127.0.0.1:5073`.
+- `npm test -- --run` in `Learnify.Client` - passed, 7 files / 20 tests.
+- `npm run build` in `Learnify.Client` - passed.
+- Runtime smoke against the existing API instance confirmed unauthenticated `GET /api/quizzes` and `GET /api/ai/provider` return `401`.
+- Runtime smoke registered two fresh users, created a course and note, generated a 3-question Gemini quiz from note content, retrieved it with populated question text/options/correct answers/explanations, submitted correct answers, received score `3/3` and `100%`, listed one attempt, and confirmed the second user receives `404` for the first user's quiz.
+- Default provider check confirmed `Gemini` with model `gemini-3.5-flash`.
+- Local LLaMA was not re-verified in this pass: `http://127.0.0.1:8080/v1/models` was not reachable.
+
 ### Completed Quiz Features
 
 - AI-generated quizzes from note content.
@@ -622,3 +636,54 @@ For production: Azure Key Vault or environment variables injected at deployment 
 | PDF extraction partial | PASS_WITH_CAVEAT | `.txt` and `.md` upload persist `Note.Content`; real PDF text extraction is still future work. |
 | Advanced quiz features | Future work | Matching, scenario/coding questions, AI hints, weakness analysis, related concepts, adaptive engine, and analytics dashboard are not implemented. |
 | NuGet vulnerability warnings | COMPLETE | M8.2 solution-level `dotnet list package --vulnerable --include-transitive` completed successfully with no vulnerable packages reported. |
+
+## M8.4 - UI Runtime Bugfix + AI Action Wiring + New User Data Integrity
+
+- Removed active demo user model seeding from `ApplicationDbContext` and the EF model snapshot.
+- Added a cleanup migration for previously seeded learning data so fully migrated databases do not retain starter courses/notes/quizzes for demo seed identities.
+- Replaced Dashboard client placeholders with real per-user counts and empty/coming-soon learning metrics for unavailable streak/progress/heatmap data.
+- Rewired Note Detail AI actions so Generate Summary, Generate Flashcards, Generate Study Tips, and Generate Quiz call their services directly from the sidebar action buttons.
+- Hardened LocalOpenAI response parsing to fail clearly on empty `choices[0].message.content`.
+- Updated study tips prompting to use note content, cap prompt size, increase token budget, and reject blank provider responses.
+- Made PDF upload/analyze status honest: PDF extraction is not implemented yet, and Smart Upload now accepts text/Markdown for AI analysis instead of sending base64 PDF bytes to the AI provider.
+- Added frontend regression coverage for the Note Detail AI action buttons.
+
+## M8.4.1 - Restore Text-Based PDF Extraction
+
+- Restored Smart Upload support for `.pdf` files without reverting the M8.4 safety fix: AI receives extracted text only, never raw PDF base64.
+- Added `IPdfTextExtractor` and `PdfTextExtractor` using `PdfPig 0.1.14` for selectable-text PDF extraction.
+- Updated `NotesController.AnalyzeAndSave` to accept `.txt`, `.md`, and `.pdf`, extract PDF text server-side, normalize text, and return a clean 400-level error for invalid/scanned/image-only PDFs.
+- Saved analyzed PDF notes include an `Extracted PDF Text` section so downstream summary, flashcard, study-tip, and quiz actions can use readable content.
+- Updated Smart Upload UI copy and validation to support `.txt`, `.md`, and text-based `.pdf` files while clearly excluding scanned/image-only PDFs.
+- Added backend integration tests for `.txt`, `.md`, valid text-based PDF extraction, invalid PDF 400 handling, and ensuring PDF base64 is not saved as `Note.Content`.
+- Added frontend SmartUpload tests for PDF selection, supported-file copy, backend extraction error display, and `.md` analyze behavior.
+
+### Verification - 2026-06-05
+
+- `dotnet restore` - passed.
+- `dotnet build --no-restore` - passed with 0 warnings and 0 errors.
+- `dotnet test --no-restore` - passed, 30 backend tests.
+- `dotnet list package --vulnerable --include-transitive` - passed; no vulnerable packages reported.
+- `npm test -- --run` in `Learnify.Client` - passed, 8 files / 23 tests.
+- `npm run build` in `Learnify.Client` - passed.
+- Runtime smoke: Learnify.Web started on `http://localhost:5073`, Learnify.Client served `200` from `http://127.0.0.1:5173`, direct `.txt` and `.md` uploads saved notes, generated text-based PDF analysis saved a note containing extracted text and not PDF base64, Gemini summary/flashcards/study tips/quiz succeeded from the saved PDF note, and invalid PDF upload returned `400` with the readable-text unsupported message.
+- LocalOpenAI smoke was not run for M8.4.1 because `http://127.0.0.1:8080/v1/models` was previously unreachable in this session.
+
+## M8.5 - Runtime UX + AI Reliability Fixes
+
+- Added `POST /api/notes/upload-file` for simple PDF uploads without AI analysis. The endpoint requires JWT auth, validates course ownership, accepts only `.pdf` files up to 5MB, stores the PDF as a note attachment, and stores the required non-AI placeholder in `Note.Content`.
+- Updated Notes UI with a separate "Simple PDF Upload" card and kept Direct Text Upload and AI Upload/Analysis as separate paths.
+- File-only PDF notes now show their attachment on Note Detail and disable summary, flashcard, study-tip, and quiz buttons with clear readable-text guidance.
+- Improved LocalOpenAI-facing AI reliability by returning provider failures as clear 502 responses, preserving `/v1/chat/completions` parsing, increasing analysis/study-tip output budgets, and making empty/invalid AI outputs fail clearly.
+- Study tips now request structured markdown sections: active recall, key concepts, common confusions, memory hooks, mini plan, and self-test questions.
+- Auth state now hydrates from localStorage on reload, logout clears auth state, and in-flight refresh responses cannot restore a session after logout.
+- Dedicated Flashcards page now surfaces backend errors and keeps generated cards in the Study Session flow.
+- Added shared overflow wrapping/scrolling for large textareas and AI output panels.
+
+### Verification - 2026-06-05
+
+- `dotnet build --no-restore` - passed with 0 warnings and 0 errors.
+- `dotnet test --no-restore` - passed, 34 backend tests.
+- `dotnet list package --vulnerable --include-transitive` - passed; no vulnerable packages reported.
+- `npm test -- --run` in `Learnify.Client` - passed, 9 files / 25 tests.
+- `npm run build` in `Learnify.Client` - passed.

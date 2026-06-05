@@ -273,7 +273,13 @@ public class AiProviderFactory : IAiService
 
         var options = new AiRequestOptions { MaxTokens = 2000, Temperature = 0.7f };
         var response = await provider.CompleteAsync(prompt, options, ct);
-        return ParseFlashcards(response);
+        var flashcards = ParseFlashcards(response);
+        if (flashcards.Count == 0)
+        {
+            throw new InvalidOperationException("AI flashcard response did not contain any valid cards.");
+        }
+
+        return flashcards;
     }
 
     public async Task<GeneratedQuizResult> GenerateQuizAsync(
@@ -313,14 +319,35 @@ public class AiProviderFactory : IAiService
 
     public async Task<string> GetStudyTipsAsync(string topic, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(topic))
+        {
+            throw new InvalidOperationException("Study tips require note content or a topic.");
+        }
+
         var userId = GetCurrentUserId();
         var provider = await GetActiveProviderAsync(userId);
-        _logger.LogDebug("Generating study tips for '{Topic}' via '{Provider}'", topic, provider.ProviderName);
-        var prompt = $"Provide 3-5 personalized study tips for a student learning about: {topic}. " +
-                     $"Focus on active recall, spaced repetition, and concept mastery techniques.";
+        _logger.LogDebug("Generating study tips via '{Provider}'", provider.ProviderName);
+        var snippet = topic[..Math.Min(topic.Length, 8000)];
+        var prompt = "Create concise study guidance based only on this note content. " +
+                     "Return markdown/plain text with line breaks preserved and exactly these sections:\n" +
+                     "## Study Tips\n" +
+                     "1. Active Recall Questions\n" +
+                     "2. Key Concepts to Master\n" +
+                     "3. Common Confusions\n" +
+                     "4. Memory Hooks / Analogies\n" +
+                     "5. Mini Study Plan\n" +
+                     "6. Self-Test Questions\n\n" +
+                     "Under each numbered section, include 2-4 content-specific bullets. " +
+                     "Do not invent topics that are not supported by the note. Return only the final study tips.\n\n" +
+                     $"Note content:\n{snippet}";
 
-        var options = new AiRequestOptions { MaxTokens = 500, Temperature = 0.5f };
+        var options = new AiRequestOptions { MaxTokens = 2500, Temperature = 0.35f };
         var response = await provider.CompleteAsync(prompt, options, ct);
+        if (string.IsNullOrWhiteSpace(response))
+        {
+            throw new InvalidOperationException("AI provider returned an empty study tips response.");
+        }
+
         return response;
     }
 
@@ -334,15 +361,20 @@ public class AiProviderFactory : IAiService
 
         var snippet = content[..Math.Min(content.Length, 8000)];
         var prompt = $"You are analyzing an educational document for a student note-taking app. " +
-                     $"The document is named '{fileName}'. Analyze the following content and return ONLY a " +
-                     $"raw JSON object (no markdown, no code blocks) with these exact fields:\n" +
+                     $"The document is named '{fileName}'. Analyze the content and return ONLY one compact " +
+                     $"raw JSON object. Do not include markdown, code fences, reasoning, prose, or comments. " +
+                     $"Use these exact fields:\n" +
                      $"- suggestedCourseName: a short course name this document belongs to (e.g. 'Data Structures', 'Web Development')\n" +
                      $"- summary: 2-3 sentence summary of the document\n" +
                      $"- detectedTopics: a JSON array of strings, each being a chapter or topic heading found\n\n" +
                      $"Document content:\n{snippet}";
 
-        var options = new AiRequestOptions { MaxTokens = 1000, Temperature = 0.2f };
+        var options = new AiRequestOptions { MaxTokens = 2000, Temperature = 0.2f };
         var response = await provider.CompleteAsync(prompt, options, ct);
+        if (string.IsNullOrWhiteSpace(response))
+        {
+            throw new InvalidOperationException("AI provider returned an empty document analysis response.");
+        }
 
         return ParseAnalysisResult(response, content);
     }
@@ -567,11 +599,7 @@ public class AiProviderFactory : IAiService
     {
         try
         {
-            var clean = response.Trim().TrimStart('`').TrimEnd('`');
-            if (clean.StartsWith("json", StringComparison.OrdinalIgnoreCase))
-            {
-                clean = clean[4..].Trim();
-            }
+            var clean = CleanJsonResponse(response);
 
             using var document = System.Text.Json.JsonDocument.Parse(clean);
             var root = document.RootElement;

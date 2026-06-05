@@ -12,7 +12,7 @@ Last updated: 2026-06-04
 | AI provider badge/settings UI | Complete | Static inspection confirms protected Settings route, save UI, local connection test, and global protected nav badge. |
 | Text note upload | Complete | Runtime audit confirmed `.txt` and `.md` uploads persist `Note.Content`. |
 | Flashcard viewer polish | Complete | Static inspection confirms flip, previous/next, keyboard navigation, shuffle, confidence buttons, and session score tracking. |
-| PDF text extraction | Partial | Upload analysis can store PDF/base64 context, but real PDF text extraction is not implemented. |
+| PDF text extraction | Partial | Text-based PDF extraction is supported through server-side PdfPig extraction. Scanned/image-only PDFs and OCR are not supported yet. |
 | Local LLaMA generation | Complete | Learnify supports separate `Ollama` (`/api/*`) and `LocalOpenAI` (`/v1/*`) providers. Runtime verification passed through `LocalOpenAI` for provider test, summarize, flashcards, quiz generation, and quiz submission. |
 
 ## M7 Quiz Engine Status
@@ -30,6 +30,8 @@ Last updated: 2026-06-04
 | Quiz frontend flow | Complete | `/quizzes`, `/quizzes/:id`, and `/quizzes/:id/result` compile and are protected routes with generation, taking, modes, timer, retry, and result UI. |
 | Cross-user quiz access protection | Complete | Runtime audit confirmed another user receives 404 for another user's quiz. |
 | Local LLaMA quiz generation | Complete | Runtime verification generated a quiz through `LocalOpenAI` with `Qwen3.6-35B-A3B-UD-Q4_K_M.gguf` and submitted the generated quiz attempt successfully. |
+
+Latest M7 re-verification on 2026-06-05 passed with Gemini default `gemini-3.5-flash`: generated quiz, saved quiz retrieval, attempt scoring, attempt listing, and cross-user 404 were confirmed through the running API. Local LLaMA was not re-verified because `http://127.0.0.1:8080/v1/models` was unreachable.
 
 ## M8 Testing & QA Status
 
@@ -64,7 +66,7 @@ Last updated: 2026-06-04
 | Reusable UI system | Complete | Added lightweight primitives and global tokens/classes for cards, buttons, badges, forms, stat cards, empty/loading/error states, and responsive grids. |
 | Dashboard polish | Complete with caveats | Uses real course count plus quick actions and clearly labeled placeholder heatmap/recommendation widgets. No backend analytics were added. |
 | Courses polish | Complete | Modern course cards, frontend-only search/filter chips, create/edit/delete/detail flows preserved, exact empty-state message preserved. |
-| Notes polish | Complete with caveats | Notes list and detail now use folders/tags UI, upload dropzone styling, note cards, right-side AI panel, and placeholder concept caveats. PDF extraction remains partial. |
+| Notes polish | Complete with caveats | Notes list and detail now use folders/tags UI, upload dropzone styling, note cards, right-side AI panel, and placeholder concept caveats. Text-based PDF extraction is supported; OCR remains future work. |
 | Flashcards polish | Complete | Standalone AI tools page and existing embedded viewer remain functional with flip/progress/shuffle/confidence controls and keyboard navigation. |
 | Quizzes polish | Complete | Generation, taking, timer/mode UI, results, explanations, and retry incorrect flow modernized without scoring changes. |
 | Settings polish | Complete | Provider cards/dropdown, safe API-key behavior, separate Ollama `/api/*` and LocalOpenAI `/v1/*` protocol copy, LocalOpenAI defaults preserved. |
@@ -89,3 +91,28 @@ Last updated: 2026-06-04
 - AI Tutor backend
 - Playwright E2E smoke
 - DevOps, Docker, and CI/CD
+## M8.4 Status Update
+
+- New-user dashboard integrity: fixed. Dashboard totals are loaded from the authenticated user's existing endpoints, and unavailable streak/progress/heatmap data displays as empty/coming soon instead of fake progress.
+- Demo seed data: fixed for the active model and cleanup migration. Existing databases should apply `20260604190000_RemoveDemoLearningSeed` to remove the prior demo learning records.
+- Note Detail AI actions: fixed. Sidebar buttons now call summary, flashcard, study-tip, and quiz generation services directly.
+- LocalOpenAI study tips: improved. The provider now rejects empty message content and study tips use note content with a larger token budget.
+- PDF text extraction: partial but functional for text-based PDFs. Smart Upload accepts `.txt`, `.md`, and selectable-text `.pdf`; scanned/image-only PDFs return a clean unsupported-readable-text error.
+
+## M8.4.1 Status Update
+
+- Restored Smart Upload PDF analysis with real server-side text extraction using `PdfPig 0.1.14`.
+- AI analysis receives extracted PDF text only; raw PDF bytes/base64 are not sent as AI input.
+- Saved analyzed PDF notes include the extracted PDF text section so summary, flashcard, study tips, and quiz flows can use readable content.
+- Scanned/image-only or invalid PDFs return a clean 400-level error. OCR remains future work.
+- Playwright/browser verification: not completed in this pass because command escalation was blocked by the environment usage limit.
+
+## M8.5 Runtime UX + AI Reliability Status Update
+
+- Simple PDF upload without AI analysis is complete: `POST /api/notes/upload-file` stores file-only PDFs as note attachments, uses the required non-AI placeholder content, validates auth/course ownership/file type/size, and does not call AI.
+- File-only PDF Note Detail UX is complete: attachments are visible and AI actions are disabled with readable-text guidance.
+- LocalOpenAI reliability is improved: Learnify keeps LocalOpenAI on `/v1/chat/completions`, surfaces provider failures as clear 502 responses, rejects empty content, and uses stricter prompts/output budgets for analysis and study tips.
+- Study tips output is improved: prompts request the required structured markdown sections and frontend rendering preserves line breaks.
+- Auth reload/logout behavior is improved: auth store hydrates from localStorage and stale refresh responses cannot restore a logged-out session.
+- Dedicated Flashcards generation is improved: backend errors are shown and generated cards remain in the Study Session flow.
+- Large text overflow is improved across textareas, note content, flashcards, and AI output panels.

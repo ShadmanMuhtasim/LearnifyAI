@@ -366,6 +366,7 @@ const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ noteId, content }) =>
               textAlign: 'center',
               margin: 0,
               whiteSpace: 'pre-wrap',
+              overflowWrap: 'anywhere',
             }}>
               {current.question}
             </p>
@@ -399,6 +400,7 @@ const FlashcardViewer: React.FC<FlashcardViewerProps> = ({ noteId, content }) =>
               textAlign: 'center',
               margin: 0,
               whiteSpace: 'pre-wrap',
+              overflowWrap: 'anywhere',
             }}>
               {current.answer}
             </p>

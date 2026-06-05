@@ -1,9 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Learnify.Application;
 using Learnify.Application.DTOs;
 using Learnify.Application.DTOs.AI;
+using Learnify.Web.Controllers;
 using Xunit;
 
 namespace Learnify.Tests.Integration;
@@ -12,10 +14,12 @@ public sealed class ControllerIntegrationTests : IClassFixture<LearnifyWebApplic
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    private readonly LearnifyWebApplicationFactory _factory;
     private readonly HttpClient _client;
 
     public ControllerIntegrationTests(LearnifyWebApplicationFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
@@ -188,6 +192,164 @@ public sealed class ControllerIntegrationTests : IClassFixture<LearnifyWebApplic
         Assert.Equal(HttpStatusCode.NotFound, crossUserResponse.StatusCode);
     }
 
+    [Theory]
+    [InlineData("learnify-note.txt", "Text upload analyze content for cells.")]
+    [InlineData("learnify-note.md", "# Markdown Notes\n\nPhotosynthesis uses light.")]
+    public async Task NotesAnalyzeUpload_TextAndMarkdownStillCreateNotes(
+        string fileName,
+        string content)
+    {
+        var token = await RegisterAndGetTokenAsync();
+        var response = await PostApiDataAsync<AnalyzeUploadResponse>(
+            "/api/notes/analyze-upload",
+            new
+            {
+                fileName,
+                fileBase64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(content)),
+                fileType = "text",
+                preferredCourseName = (string?)null
+            },
+            token);
+
+        Assert.NotEqual(Guid.Empty, response.NoteId);
+        var note = await GetApiDataAsync<NoteDTO>($"/api/notes/{response.NoteId}", token);
+        Assert.Contains("Mocked document summary.", note.Content);
+        Assert.Contains(fileName, note.Content);
+    }
+
+    [Fact]
+    public async Task NotesAnalyzeUpload_TextBasedPdfExtractsReadableTextAndDoesNotStoreBase64AsContent()
+    {
+        var token = await RegisterAndGetTokenAsync();
+        var pdfBytes = CreateTinyTextPdf("Learnify PDF extraction works for text based files.");
+        var base64 = Convert.ToBase64String(pdfBytes);
+
+        var response = await PostApiDataAsync<AnalyzeUploadResponse>(
+            "/api/notes/analyze-upload",
+            new
+            {
+                fileName = "learnify-text.pdf",
+                fileBase64 = base64,
+                fileType = "pdf",
+                preferredCourseName = (string?)null
+            },
+            token);
+
+        var note = await GetApiDataAsync<NoteDTO>($"/api/notes/{response.NoteId}", token);
+        Assert.Contains("Learnify PDF extraction works", note.Content);
+        Assert.DoesNotContain(base64, note.Content);
+        Assert.Contains("learnify-text.pdf", note.Content);
+    }
+
+    [Fact]
+    public async Task NotesAnalyzeUpload_InvalidPdfReturnsCleanBadRequest()
+    {
+        var token = await RegisterAndGetTokenAsync();
+
+        using var request = NewRequest(
+            HttpMethod.Post,
+            "/api/notes/analyze-upload",
+            token,
+            new
+            {
+                fileName = "not-a-real.pdf",
+                fileBase64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("not a pdf")),
+                fileType = "pdf",
+                preferredCourseName = (string?)null
+            });
+        var response = await _client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("No readable text was extracted", body);
+        Assert.DoesNotContain("Failed to analyze and save document", body);
+    }
+
+    [Fact]
+    public async Task NotesUploadFile_Returns401WithoutJwt()
+    {
+        using var content = new MultipartFormDataContent();
+        content.Add(new StringContent(Guid.NewGuid().ToString()), "courseId");
+        content.Add(new ByteArrayContent(CreateTinyTextPdf("Private PDF")), "file", "private.pdf");
+
+        var response = await _client.PostAsync("/api/notes/upload-file", content);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task NotesUploadFile_PdfCreatesAttachmentNoteWithoutCallingAi()
+    {
+        _factory.ResetAiCallCounts();
+        var token = await RegisterAndGetTokenAsync();
+        var course = await CreateCourseAsync(token);
+        var pdfBytes = CreateTinyTextPdf("Simple upload stores this PDF as an attachment.");
+        var expectedBase64 = Convert.ToBase64String(pdfBytes);
+
+        using var request = NewMultipartRequest(
+            "/api/notes/upload-file",
+            token,
+            course.Id,
+            new ByteArrayContent(pdfBytes),
+            "simple-upload.pdf",
+            "application/pdf");
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var note = await ReadApiResponseAsync<NoteDTO>(response);
+        Assert.Equal(
+            "This PDF was uploaded without text extraction. Use AI Analyze on a text-based PDF or upload .txt/.md content to generate AI study tools.",
+            note.Content);
+        Assert.DoesNotContain(expectedBase64, note.Content);
+        var attachment = Assert.Single(note.Attachments);
+        Assert.Equal("simple-upload.pdf", attachment.Name);
+        Assert.Equal("application/pdf", attachment.Type);
+        Assert.Equal(expectedBase64, attachment.Base64);
+        Assert.Equal(0, _factory.AnalyzeDocumentCallCount);
+
+        var savedNote = await GetApiDataAsync<NoteDTO>($"/api/notes/{note.Id}", token);
+        Assert.Single(savedNote.Attachments);
+    }
+
+    [Fact]
+    public async Task NotesUploadFile_RejectsUnsupportedFiles()
+    {
+        var token = await RegisterAndGetTokenAsync();
+        var course = await CreateCourseAsync(token);
+
+        using var request = NewMultipartRequest(
+            "/api/notes/upload-file",
+            token,
+            course.Id,
+            new ByteArrayContent(Encoding.UTF8.GetBytes("not a pdf")),
+            "notes.txt",
+            "text/plain");
+        var response = await _client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Only PDF files are supported", body);
+    }
+
+    [Fact]
+    public async Task NotesUploadFile_RejectsNonOwnedCourse()
+    {
+        var ownerToken = await RegisterAndGetTokenAsync();
+        var otherToken = await RegisterAndGetTokenAsync();
+        var ownerCourse = await CreateCourseAsync(ownerToken);
+
+        using var request = NewMultipartRequest(
+            "/api/notes/upload-file",
+            otherToken,
+            ownerCourse.Id,
+            new ByteArrayContent(CreateTinyTextPdf("Not your course")),
+            "cross-user.pdf",
+            "application/pdf");
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     private async Task<string> RegisterAndGetTokenAsync()
     {
         var email = $"integration-{Guid.NewGuid():N}@learnify.test";
@@ -294,6 +456,26 @@ public sealed class ControllerIntegrationTests : IClassFixture<LearnifyWebApplic
         return request;
     }
 
+    private static HttpRequestMessage NewMultipartRequest(
+        string path,
+        string token,
+        Guid courseId,
+        ByteArrayContent fileContent,
+        string fileName,
+        string contentType)
+    {
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+        var multipart = new MultipartFormDataContent
+        {
+            { new StringContent(courseId.ToString()), "courseId" },
+            { fileContent, "file", fileName }
+        };
+
+        var request = NewRequest(HttpMethod.Post, path, token);
+        request.Content = multipart;
+        return request;
+    }
+
     private static async Task<T> ReadApiResponseAsync<T>(HttpResponseMessage response)
     {
         var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<T>>(JsonOptions);
@@ -301,5 +483,45 @@ public sealed class ControllerIntegrationTests : IClassFixture<LearnifyWebApplic
         Assert.True(apiResponse.Success, apiResponse.Message);
         Assert.NotNull(apiResponse.Data);
         return apiResponse.Data;
+    }
+
+    private static byte[] CreateTinyTextPdf(string text)
+    {
+        static string EscapePdfText(string value)
+            => value.Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)");
+
+        var stream = $"BT /F1 18 Tf 72 720 Td ({EscapePdfText(text)}) Tj ET";
+        var objects = new[]
+        {
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+            $"<< /Length {Encoding.ASCII.GetByteCount(stream)} >>\nstream\n{stream}\nendstream"
+        };
+
+        var builder = new StringBuilder();
+        builder.Append("%PDF-1.4\n");
+        var offsets = new List<int> { 0 };
+
+        for (var i = 0; i < objects.Length; i++)
+        {
+            offsets.Add(Encoding.ASCII.GetByteCount(builder.ToString()));
+            builder.Append(i + 1).Append(" 0 obj\n")
+                .Append(objects[i]).Append("\nendobj\n");
+        }
+
+        var xrefOffset = Encoding.ASCII.GetByteCount(builder.ToString());
+        builder.Append("xref\n0 6\n0000000000 65535 f \n");
+        foreach (var offset in offsets.Skip(1))
+        {
+            builder.Append(offset.ToString("D10")).Append(" 00000 n \n");
+        }
+
+        builder.Append("trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n")
+            .Append(xrefOffset)
+            .Append("\n%%EOF");
+
+        return Encoding.ASCII.GetBytes(builder.ToString());
     }
 }
