@@ -108,6 +108,7 @@ builder.Services.AddAuthorization();
 // Register AuthService
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IQuizService, QuizService>();
+builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 
 // Register Background Notification Service (scoped for queueing, singleton channel for shared queue)
 builder.Services.AddSingleton<INotificationService, EmailNotificationService>();

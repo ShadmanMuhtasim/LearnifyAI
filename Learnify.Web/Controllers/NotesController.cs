@@ -1,6 +1,7 @@
 using AutoMapper;
 using Learnify.Application;
 using Learnify.Application.DTOs;
+using Learnify.Application.Interfaces;
 using Learnify.Core.Entities;
 using Learnify.Core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -25,17 +26,20 @@ public class NotesController : ControllerBase
     private readonly IMapper _mapper;
     private readonly ILogger<NotesController> _logger;
     private readonly IPdfTextExtractor _pdfTextExtractor;
+    private readonly IAnalyticsService _analyticsService;
 
     public NotesController(
         IUnitOfWork unitOfWork,
         IMapper mapper,
         ILogger<NotesController> logger,
-        IPdfTextExtractor pdfTextExtractor)
+        IPdfTextExtractor pdfTextExtractor,
+        IAnalyticsService analyticsService)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _logger = logger;
         _pdfTextExtractor = pdfTextExtractor;
+        _analyticsService = analyticsService;
     }
 
     private Guid GetUserId()
@@ -150,6 +154,7 @@ public class NotesController : ControllerBase
 
             await _unitOfWork.Notes.AddAsync(note);
             await _unitOfWork.SaveChangesAsync();
+            await TrackAsync(userId, "NoteUploaded", "Note", note.Id);
 
             var noteDto = new NoteDTO
             {
@@ -371,6 +376,7 @@ public class NotesController : ControllerBase
 
             await _unitOfWork.Notes.AddAsync(note);
             await _unitOfWork.SaveChangesAsync();
+            await TrackAsync(userId, "NoteUploaded", "Note", note.Id);
 
             var noteDto = new NoteDTO
             {
@@ -454,6 +460,7 @@ public class NotesController : ControllerBase
 
             await _unitOfWork.Notes.AddAsync(note);
             await _unitOfWork.SaveChangesAsync();
+            await TrackAsync(userId, "PdfUploaded", "Note", note.Id);
 
             var noteDto = new NoteDTO
             {
@@ -581,6 +588,7 @@ public class NotesController : ControllerBase
 
             await _unitOfWork.Notes.AddAsync(note);
             await _unitOfWork.SaveChangesAsync();
+            await TrackAsync(userId, request.FileType.Equals("pdf", StringComparison.OrdinalIgnoreCase) ? "PdfUploaded" : "NoteUploaded", "Note", note.Id);
 
             var result = new AnalyzeUploadResponse(
                 NoteId: note.Id,
@@ -643,6 +651,18 @@ public class NotesController : ControllerBase
         }
 
         return string.Empty;
+    }
+
+    private async Task TrackAsync(Guid userId, string activityType, string entityType, Guid entityId)
+    {
+        try
+        {
+            await _analyticsService.TrackAsync(userId, activityType, entityType, entityId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Analytics tracking failed for {ActivityType}", activityType);
+        }
     }
 }
 

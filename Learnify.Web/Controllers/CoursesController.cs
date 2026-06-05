@@ -1,6 +1,7 @@
 using AutoMapper;
 using Learnify.Application;
 using Learnify.Application.DTOs;
+using Learnify.Application.Interfaces;
 using Learnify.Core.Entities;
 using Learnify.Core.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -18,13 +19,20 @@ public class CoursesController : ControllerBase
     private readonly IMapper _mapper;
     private readonly ILogger<CoursesController> _logger;
     private readonly INotificationService _notificationService;
+    private readonly IAnalyticsService _analyticsService;
 
-    public CoursesController(IUnitOfWork unitOfWork, IMapper mapper, ILogger<CoursesController> logger, INotificationService notificationService)
+    public CoursesController(
+        IUnitOfWork unitOfWork,
+        IMapper mapper,
+        ILogger<CoursesController> logger,
+        INotificationService notificationService,
+        IAnalyticsService analyticsService)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _logger = logger;
         _notificationService = notificationService;
+        _analyticsService = analyticsService;
     }
 
     private Guid GetUserId()
@@ -96,6 +104,7 @@ public class CoursesController : ControllerBase
 
             var courseDto = _mapper.Map<CourseDto>(course);
             _logger.LogInformation("Course created for user {UserId}: {CourseId}", userId, courseDto.Id);
+            await TrackAsync(userId, "CourseCreated", "Course", course.Id);
 
             return CreatedAtAction(nameof(GetCourse), new { id = courseDto.Id },
                 ApiResponse<CourseDto>.Ok(courseDto, "Course created"));
@@ -203,6 +212,18 @@ public class CoursesController : ControllerBase
         {
             _logger.LogError(ex, "Error enrolling in course with ID {CourseId}", id);
             return StatusCode(500, ApiResponse.BadRequest("An error occurred while enrolling in the course."));
+        }
+    }
+
+    private async Task TrackAsync(Guid userId, string activityType, string entityType, Guid entityId)
+    {
+        try
+        {
+            await _analyticsService.TrackAsync(userId, activityType, entityType, entityId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Analytics tracking failed for {ActivityType}", activityType);
         }
     }
 }

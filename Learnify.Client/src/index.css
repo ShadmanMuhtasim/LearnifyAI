@@ -622,6 +622,24 @@ textarea,
   font-size: 0.88rem;
 }
 
+.list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: #fbfaff;
+  text-decoration: none;
+}
+
+.list-row > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .empty-state {
   display: grid;
   justify-items: center;
@@ -899,6 +917,41 @@ textarea,
 .result-incorrect {
   border-color: #fecaca;
   background: #fef2f2;
+}
+
+.achievement-card {
+  align-content: start;
+}
+
+.achievement-card-unlocked {
+  border-color: #a7f3d0;
+  background: linear-gradient(180deg, #ffffff, #f0fdf4);
+}
+
+.achievement-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--primary);
+  background: var(--primary-soft);
+  font-family: var(--font-mono);
+  font-weight: 800;
+}
+
+.achievement-progress {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.achievement-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
 }
 
 .provider-grid {

@@ -1,6 +1,6 @@
 # Feature Gaps
 
-Last updated: 2026-06-04
+Last updated: 2026-06-05
 
 ## M6R Smart Learning Core Status
 
@@ -46,6 +46,19 @@ Latest M7 re-verification on 2026-06-05 passed with Gemini default `gemini-3.5-f
 | UI/UX polish | Complete for M8.3 | Added shared app shell, reusable UI primitives, responsive design tokens, polished Dashboard/Courses/Notes/Flashcards/Quizzes/Settings pages, and preserved existing frontend tests. No backend product features were added. |
 | E2E coverage | Not Started | Playwright flow for register -> create course -> add note -> generate quiz -> submit quiz remains future work. |
 
+## M9 Analytics & Achievements Status
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Learning activity tracking | Complete | Tracks real authenticated user activity for course creation, note/PDF upload, AI study actions, quiz generation, and quiz attempts. |
+| Dashboard analytics API | Complete | `/api/analytics/dashboard` returns real per-user totals, XP, streaks, quiz scores, achievements, and recent activity. Fresh users receive zeros and empty activity. |
+| Quiz performance API | Complete | `/api/analytics/quiz-performance` returns real attempts, recent scores, and per-quiz summaries scoped to the current user. |
+| Achievements API | Complete | `/api/achievements` returns static achievement definitions with per-user lock/unlock state and progress. No fake users or demo learning data were added. |
+| Analytics frontend | Complete | Dashboard now uses backend analytics; protected `/analytics` page shows stats, quiz performance, and recent activity. |
+| Achievements frontend | Complete | Protected `/achievements` page shows locked/unlocked achievement cards and progress. |
+| Cross-user isolation | Complete | Integration tests verify one user's activity does not appear in another user's analytics. |
+| Advanced analytics | Future work | Time spent studying, topic mastery, heatmap charts, trend reports, adaptive recommendations, and levels remain future work. |
+
 ## M8.1 Integration Tests & Vulnerability Cleanup
 
 | Area | Status | Notes |
@@ -86,8 +99,7 @@ Latest M7 re-verification on 2026-06-05 passed with Gemini default `gemini-3.5-f
 ## Still Future Work
 
 - Study planner
-- Analytics and achievements
-- Backend analytics for dashboard widgets
+- Advanced analytics charts, topic mastery, reports, and levels
 - AI Tutor backend
 - Playwright E2E smoke
 - DevOps, Docker, and CI/CD

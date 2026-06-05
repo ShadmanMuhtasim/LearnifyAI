@@ -14,11 +14,16 @@ public class QuizzesController : ControllerBase
 {
     private readonly IQuizService _quizService;
     private readonly ILogger<QuizzesController> _logger;
+    private readonly IAnalyticsService _analyticsService;
 
-    public QuizzesController(IQuizService quizService, ILogger<QuizzesController> logger)
+    public QuizzesController(
+        IQuizService quizService,
+        ILogger<QuizzesController> logger,
+        IAnalyticsService analyticsService)
     {
         _quizService = quizService;
         _logger = logger;
+        _analyticsService = analyticsService;
     }
 
     [HttpPost("generate")]
@@ -29,6 +34,7 @@ public class QuizzesController : ControllerBase
         try
         {
             var quiz = await _quizService.GenerateQuizAsync(GetUserId(), request, cancellationToken);
+            await TrackAsync("QuizGenerated", "Quiz", quiz.Id);
             return CreatedAtAction(
                 nameof(GetQuiz),
                 new { id = quiz.Id },
@@ -81,6 +87,7 @@ public class QuizzesController : ControllerBase
                 return NotFound(ApiResponse<QuizResultDto>.NotFound("Quiz not found."));
             }
 
+            await TrackAsync("QuizAttemptSubmitted", "Quiz", id, result.Percentage >= 100 ? 30 : 20);
             return Ok(ApiResponse<QuizResultDto>.Ok(result, "Quiz submitted successfully."));
         }
         catch (InvalidOperationException ex)
@@ -98,4 +105,16 @@ public class QuizzesController : ControllerBase
 
     private Guid GetUserId()
         => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+    private async Task TrackAsync(string activityType, string entityType, Guid entityId, int? points = null)
+    {
+        try
+        {
+            await _analyticsService.TrackAsync(GetUserId(), activityType, entityType, entityId, points);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Analytics tracking failed for {ActivityType}", activityType);
+        }
+    }
 }

@@ -11,6 +11,8 @@ import Flashcards from './pages/Flashcards';
 import Quizzes from './pages/Quizzes';
 import QuizTaking from './pages/QuizTaking';
 import QuizResult from './pages/QuizResult';
+import Analytics from './pages/Analytics';
+import Achievements from './pages/Achievements';
 import Settings from './pages/Settings';
 import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout/Layout';
@@ -100,6 +102,22 @@ function App() {
           element={
             <PrivateRoute>
               <Layout><QuizResult /></Layout>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/analytics"
+          element={
+            <PrivateRoute>
+              <Layout><Analytics /></Layout>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/achievements"
+          element={
+            <PrivateRoute>
+              <Layout><Achievements /></Layout>
             </PrivateRoute>
           }
         />

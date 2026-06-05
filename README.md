@@ -4,7 +4,7 @@
 
 [![Backend Build](https://img.shields.io/badge/backend-passing-brightgreen)]()
 [![Frontend Build](https://img.shields.io/badge/frontend-passing-brightgreen)]()
-[![Milestone](https://img.shields.io/badge/milestone-M8.5%20runtime%20UX%20%2B%20AI%20reliability-brightgreen)]()
+[![Milestone](https://img.shields.io/badge/milestone-M9%20analytics%20%2B%20achievements-brightgreen)]()
 
 ---
 
@@ -206,14 +206,15 @@ Learnify.Client          → React + TypeScript frontend (Vite)
 
 | Feature | Backend | Frontend | Overall |
 |---|---|---|---|
-| Learning Streak Tracking | ❌ | ❌ | ❌ Not Started |
-| Quiz Performance Charts | ❌ | ❌ | ❌ Not Started |
+| Learning Streak Tracking | ✅ | ✅ | ✅ Complete |
+| Quiz Performance Charts | ✅ | ✅ | ✅ Basic summaries complete |
 | Topic Mastery Visualization | ❌ | ❌ | ❌ Not Started |
 | Time Spent Studying | ❌ | ❌ | ❌ Not Started |
 | Knowledge Growth Trend | ❌ | ❌ | ❌ Not Started |
-| Learning Heatmap | ❌ | 🔄 | 🔄 Static/placeholder UI |
+| Learning Heatmap | ❌ | ❌ | ❌ Not Started |
 | Weekly / Monthly Reports | ❌ | ❌ | ❌ Not Started |
 | Course Completion Stats | ❌ | ❌ | ❌ Not Started |
+| Recent Activity Feed | ✅ | ✅ | ✅ Complete |
 
 ---
 
@@ -221,11 +222,11 @@ Learnify.Client          → React + TypeScript frontend (Vite)
 
 | Feature | Backend | Frontend | Overall |
 |---|---|---|---|
-| XP Points System | ❌ | ❌ | ❌ Not Started |
+| XP Points System | ✅ | ✅ | ✅ Complete |
 | User Levels | ❌ | ❌ | ❌ Not Started |
-| Badges | ❌ | ❌ | ❌ Not Started |
-| Milestones | ❌ | ❌ | ❌ Not Started |
-| Streak Rewards | ❌ | ❌ | ❌ Not Started |
+| Badges | ✅ | ✅ | ✅ Static achievement catalog complete |
+| Milestones | ✅ | ✅ | ✅ Basic unlock milestones complete |
+| Streak Rewards | ✅ | ✅ | ✅ Basic streak achievement complete |
 | Learning Challenges | ❌ | ❌ | ❌ Not Started |
 
 ---
@@ -236,17 +237,17 @@ Learnify.Client          → React + TypeScript frontend (Vite)
 |---|---|---|---|
 | Dashboard Page (`/dashboard`) | N/A | ✅ | ✅ Complete |
 | Welcome Message + User Name | N/A | ✅ | ✅ Complete |
-| Daily Learning Streak Widget | ❌ | ❌ | ❌ Not Started |
-| Learning Statistics Cards | ❌ | ❌ | ❌ Not Started |
+| Daily Learning Streak Widget | ✅ | ✅ | ✅ Complete |
+| Learning Statistics Cards | ✅ | ✅ | ✅ Complete |
 | Study Progress Bars | ❌ | ❌ | ❌ Not Started |
-| Recent Notes Widget | ❌ | ❌ | ❌ Not Started |
+| Recent Activity Widget | ✅ | ✅ | ✅ Complete |
 | Upcoming Study Sessions Widget | ❌ | ❌ | ❌ Not Started |
 | AI Recommendations Widget | ❌ | ❌ | ❌ Not Started |
 | Quick Actions Panel | N/A | ✅ | ✅ Complete |
 | Recently Generated Quizzes | ❌ | ❌ | ❌ Not Started |
 | Flashcard Performance Widget | ❌ | ❌ | ❌ Not Started |
 | Weekly Learning Graph | ❌ | ❌ | ❌ Not Started |
-| Achievement Cards | ❌ | ❌ | ❌ Not Started |
+| Achievement Cards | ✅ | ✅ | ✅ Complete |
 
 ---
 
@@ -405,7 +406,7 @@ LearnifyAI/
 | M6 — Smart Learning Core | Course CRUD, `.txt/.md` upload, per-user settings, flashcard polish | ✅ M6R verified; PDF extraction remains future work |
 | M7 — Quiz Engine | AI-generated quizzes, taking flow, attempts, scoring, modes, timer, retry, results | ✅ Complete for M7.1 quiz polish; advanced analytics/adaptive features remain future work |
 | M8 — Testing, QA & UI Polish | Backend unit/provider/integration tests, frontend page tests, builds, vulnerability audit, Stitch-inspired UI polish | ✅ M8.3 UI polish complete; Playwright E2E remains |
-| M9 — Analytics & Achievements | Progress tracking, gamification | ⏳ Planned |
+| M9 — Analytics & Achievements | Progress tracking, gamification | ✅ Complete |
 | M10 — Dashboard & UI Polish | Full dashboard, dark mode, animations | ⏳ Planned |
 | M11 — AI Tutor & Study Planner | Chat interface, calendar scheduler | ⏳ Planned |
 | M12 — Deployment & DevOps | Docker, CI/CD, Azure App Service | ⏳ Planned |

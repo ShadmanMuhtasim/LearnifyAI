@@ -22,6 +22,9 @@ public class ApplicationDbContext : DbContext
     public DbSet<Question> Questions { get; set; } = null!;
     public DbSet<QuizAttempt> QuizAttempts { get; set; } = null!;
     public DbSet<QuizAttemptAnswer> QuizAttemptAnswers { get; set; } = null!;
+    public DbSet<LearningActivity> LearningActivities { get; set; } = null!;
+    public DbSet<Achievement> Achievements { get; set; } = null!;
+    public DbSet<UserAchievement> UserAchievements { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -58,6 +61,16 @@ public class ApplicationDbContext : DbContext
                   .WithOne(e => e.User)
                   .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasMany<LearningActivity>()
+                  .WithOne(e => e.User)
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany<UserAchievement>()
+                  .WithOne(e => e.User)
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<UserAiSettings>(entity =>
@@ -193,5 +206,146 @@ public class ApplicationDbContext : DbContext
                   .OnDelete(DeleteBehavior.NoAction);
         });
 
+        modelBuilder.Entity<LearningActivity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.UserId, e.OccurredAt });
+            entity.Property(e => e.ActivityType).IsRequired().HasMaxLength(80);
+            entity.Property(e => e.EntityType).HasMaxLength(80);
+            entity.Property(e => e.MetadataJson);
+            entity.Property(e => e.OccurredAt).HasDefaultValueSql("GETUTCDATE()");
+        });
+
+        modelBuilder.Entity<Achievement>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Code).IsUnique();
+            entity.Property(e => e.Code).IsRequired().HasMaxLength(80);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(160);
+            entity.Property(e => e.Description).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.Icon).HasMaxLength(40);
+            entity.Property(e => e.AchievementType).IsRequired().HasMaxLength(80);
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.HasData(AchievementDefinitions);
+        });
+
+        modelBuilder.Entity<UserAchievement>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.UserId, e.AchievementId }).IsUnique();
+            entity.Property(e => e.UnlockedAt).HasDefaultValueSql("GETUTCDATE()");
+            entity.HasOne(e => e.Achievement)
+                  .WithMany(e => e.UserAchievements)
+                  .HasForeignKey(e => e.AchievementId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
     }
+
+    private static readonly Achievement[] AchievementDefinitions =
+    [
+        new()
+        {
+            Id = Guid.Parse("11111111-1111-1111-1111-111111111101"),
+            Code = "first-course",
+            Title = "First Course",
+            Description = "Create your first course.",
+            Icon = "CR",
+            RequiredValue = 1,
+            AchievementType = "CourseCreated",
+            PointsReward = 25,
+            IsActive = true,
+            CreatedAt = new DateTime(2026, 6, 5, 0, 0, 0, DateTimeKind.Utc)
+        },
+        new()
+        {
+            Id = Guid.Parse("11111111-1111-1111-1111-111111111102"),
+            Code = "first-note",
+            Title = "First Note",
+            Description = "Upload or create your first note.",
+            Icon = "NT",
+            RequiredValue = 1,
+            AchievementType = "NoteUploaded",
+            PointsReward = 25,
+            IsActive = true,
+            CreatedAt = new DateTime(2026, 6, 5, 0, 0, 0, DateTimeKind.Utc)
+        },
+        new()
+        {
+            Id = Guid.Parse("11111111-1111-1111-1111-111111111103"),
+            Code = "first-quiz",
+            Title = "First Quiz",
+            Description = "Generate your first quiz.",
+            Icon = "QZ",
+            RequiredValue = 1,
+            AchievementType = "QuizGenerated",
+            PointsReward = 30,
+            IsActive = true,
+            CreatedAt = new DateTime(2026, 6, 5, 0, 0, 0, DateTimeKind.Utc)
+        },
+        new()
+        {
+            Id = Guid.Parse("11111111-1111-1111-1111-111111111104"),
+            Code = "perfect-quiz",
+            Title = "Perfect Quiz",
+            Description = "Score 100% on a quiz attempt.",
+            Icon = "100",
+            RequiredValue = 1,
+            AchievementType = "PerfectQuiz",
+            PointsReward = 50,
+            IsActive = true,
+            CreatedAt = new DateTime(2026, 6, 5, 0, 0, 0, DateTimeKind.Utc)
+        },
+        new()
+        {
+            Id = Guid.Parse("11111111-1111-1111-1111-111111111105"),
+            Code = "flashcard-starter",
+            Title = "Flashcard Starter",
+            Description = "Generate flashcards from your notes.",
+            Icon = "FC",
+            RequiredValue = 1,
+            AchievementType = "FlashcardsGenerated",
+            PointsReward = 25,
+            IsActive = true,
+            CreatedAt = new DateTime(2026, 6, 5, 0, 0, 0, DateTimeKind.Utc)
+        },
+        new()
+        {
+            Id = Guid.Parse("11111111-1111-1111-1111-111111111106"),
+            Code = "ai-explorer",
+            Title = "AI Explorer",
+            Description = "Use summary, flashcards, and study tips.",
+            Icon = "AI",
+            RequiredValue = 3,
+            AchievementType = "AiToolKindsUsed",
+            PointsReward = 40,
+            IsActive = true,
+            CreatedAt = new DateTime(2026, 6, 5, 0, 0, 0, DateTimeKind.Utc)
+        },
+        new()
+        {
+            Id = Guid.Parse("11111111-1111-1111-1111-111111111107"),
+            Code = "three-day-learner",
+            Title = "Three Day Learner",
+            Description = "Record learning activity on three separate days.",
+            Icon = "ST",
+            RequiredValue = 3,
+            AchievementType = "LongestStreak",
+            PointsReward = 45,
+            IsActive = true,
+            CreatedAt = new DateTime(2026, 6, 5, 0, 0, 0, DateTimeKind.Utc)
+        },
+        new()
+        {
+            Id = Guid.Parse("11111111-1111-1111-1111-111111111108"),
+            Code = "productive-learner",
+            Title = "Productive Learner",
+            Description = "Complete five learning actions.",
+            Icon = "XP",
+            RequiredValue = 5,
+            AchievementType = "ActivityCount",
+            PointsReward = 35,
+            IsActive = true,
+            CreatedAt = new DateTime(2026, 6, 5, 0, 0, 0, DateTimeKind.Utc)
+        }
+    ];
 }
