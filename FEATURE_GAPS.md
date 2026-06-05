@@ -116,3 +116,10 @@ Latest M7 re-verification on 2026-06-05 passed with Gemini default `gemini-3.5-f
 - Auth reload/logout behavior is improved: auth store hydrates from localStorage and stale refresh responses cannot restore a logged-out session.
 - Dedicated Flashcards generation is improved: backend errors are shown and generated cards remain in the Study Session flow.
 - Large text overflow is improved across textareas, note content, flashcards, and AI output panels.
+
+## LocalOpenAI / Qwen Quiz Reliability Follow-up
+
+- Implemented adaptive LocalOpenAI quiz batching for larger quiz requests: requests above 5 questions are generated in smaller batches, parsed through the robust quiz parser, merged, and retried once with 2-question batches on local-model output failures.
+- Added `/no_think` JSON-only prompting for LocalOpenAI quiz generation while leaving Gemini/Ollama/Mock behavior separate.
+- Automated tests cover 8-question batch merging, empty-content retry, invalid-batch failure, parser robustness, Mock compatibility, existing quiz scoring, and M9 analytics regressions.
+- Remaining caveat: the post-fix live 8-question Qwen runtime smoke still needs confirmation because the local command approval environment hit its usage limit before the runtime model/API smoke could run.

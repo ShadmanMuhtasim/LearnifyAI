@@ -57,6 +57,9 @@ public class AiProviderFactory : IAiService
     }
 
     private async Task<IAiProvider> GetActiveProviderAsync(Guid userId)
+        => (await GetActiveProviderWithConfigAsync(userId)).Provider;
+
+    private async Task<(IAiProvider Provider, UserAiSettingsStore.ProviderConfig Config)> GetActiveProviderWithConfigAsync(Guid userId)
     {
         var userSettings = await _unitOfWork.UserAiSettings.GetByUserIdAsync(userId);
         var (storeConfig, isStoreDefault) = _store.Resolve(userId);
@@ -80,10 +83,10 @@ public class AiProviderFactory : IAiService
             _logger.LogWarning(
                 "Provider '{Provider}' has no API key. Falling back to MockAiProvider.",
                 config.Provider);
-            return new MockAiProvider();
+            return (new MockAiProvider(), new UserAiSettingsStore.ProviderConfig("Mock", string.Empty, "mock", string.Empty));
         }
 
-        return config.Provider.ToLowerInvariant() switch
+        IAiProvider provider = config.Provider.ToLowerInvariant() switch
         {
             "gemini" => BuildGemini(config),
             "openai" => BuildOpenAi(config),
@@ -93,6 +96,8 @@ public class AiProviderFactory : IAiService
             "mock"   => new MockAiProvider(),
             _        => new MockAiProvider()
         };
+
+        return (provider, config);
     }
 
     private UserAiSettingsStore.ProviderConfig BuildPersistentConfig(Learnify.Core.Entities.UserAiSettings settings)
@@ -298,24 +303,76 @@ public class AiProviderFactory : IAiService
         var requestedCount = Math.Clamp(numberOfQuestions, 1, 20);
         var normalizedDifficulty = NormalizeDifficulty(difficulty);
         var userId = GetCurrentUserId();
-        var provider = await GetActiveProviderAsync(userId);
+        var (provider, providerConfig) = await GetActiveProviderWithConfigAsync(userId);
+        var isLocalOpenAi = provider.ProviderName.Equals("LocalOpenAI", StringComparison.OrdinalIgnoreCase);
 
-        var prompt = "Generate a quiz from the study material below. " +
-                     "Return ONLY a raw JSON object. Do not include markdown, code fences, prose, or comments. " +
-                     "Use this exact shape: " +
-                     "{\"title\":\"string\",\"questions\":[{\"type\":\"MultipleChoice\",\"questionText\":\"string\",\"options\":[\"A\",\"B\",\"C\",\"D\"],\"correctAnswer\":\"string\",\"explanation\":\"string\"}]}. " +
-                     $"Create exactly {requestedCount} questions. Difficulty: {normalizedDifficulty}. " +
-                     $"Allowed question types: {string.Join(", ", normalizedTypes)}. " +
-                     "For MultipleChoice, include 4 options and make correctAnswer exactly match one option. " +
-                     "For TrueFalse, options must be [\"True\", \"False\"] and correctAnswer must be True or False. " +
-                     "For ShortAnswer, options must be an empty array and correctAnswer must be concise. " +
-                     "For FillInTheBlank, include a blank in questionText using ____ and set options to an empty array.\n\n" +
-                     $"Study material:\n{content}";
+        if (isLocalOpenAi && requestedCount > 5)
+        {
+            return await LocalOpenAiQuizBatchGenerator.GenerateAsync(
+                provider,
+                providerConfig.Model,
+                content,
+                normalizedTypes,
+                normalizedDifficulty,
+                requestedCount,
+                _logger,
+                ct);
+        }
 
-        var options = new AiRequestOptions { MaxTokens = 3000, Temperature = 0.3f };
+        var prompt = isLocalOpenAi
+            ? BuildLocalOpenAiQuizPrompt(content, normalizedTypes, normalizedDifficulty, requestedCount)
+            : BuildStandardQuizPrompt(content, normalizedTypes, normalizedDifficulty, requestedCount);
+
+        var options = new AiRequestOptions { MaxTokens = isLocalOpenAi ? 2600 : 3500, Temperature = 0.1f };
         var response = await provider.CompleteAsync(prompt, options, ct);
-        return ParseQuiz(response);
+        try
+        {
+            return ParseQuiz(response);
+        }
+        catch (AiQuizFormatException ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "AI quiz parse failed. Provider={Provider}, Model={Model}, ResponseLength={ResponseLength}, Reason={Reason}, Preview={Preview}",
+                provider.ProviderName,
+                providerConfig.Model,
+                ex.ResponseLength,
+                ex.Reason,
+                ex.OutputPreview);
+            throw;
+        }
     }
+
+    private static string BuildStandardQuizPrompt(
+        string content,
+        IReadOnlyList<string> normalizedTypes,
+        string normalizedDifficulty,
+        int requestedCount) =>
+        "Create a quiz from the study material.\n" +
+        "Return ONLY valid JSON. No markdown. No code fences. No explanation. No commentary. No XML tags. No <think> tags. No trailing text.\n" +
+        "Use double quotes for all JSON strings and property names.\n" +
+        "Schema:\n" +
+        "{\"title\":\"string\",\"questions\":[{\"type\":\"MultipleChoice\",\"questionText\":\"string\",\"options\":[\"option 1\",\"option 2\",\"option 3\",\"option 4\"],\"correctAnswer\":\"option 1\",\"explanation\":\"string\"}]}\n" +
+        $"Rules: exactly {requestedCount} questions; difficulty {normalizedDifficulty}; allowed types: {string.Join(", ", normalizedTypes)}.\n" +
+        "MultipleChoice: include 4 concise options; correctAnswer must exactly match one option.\n" +
+        "TrueFalse: options must be [\"True\",\"False\"]; correctAnswer must be \"True\" or \"False\".\n" +
+        "ShortAnswer: options must be []; correctAnswer must be concise.\n" +
+        "FillInTheBlank: questionText must contain ____; options must be []; correctAnswer must be concise.\n" +
+        "Study material:\n" +
+        content[..Math.Min(content.Length, 9000)];
+
+    private static string BuildLocalOpenAiQuizPrompt(
+        string content,
+        IReadOnlyList<string> normalizedTypes,
+        string normalizedDifficulty,
+        int requestedCount) =>
+        "/no_think\n" +
+        "Return final JSON only. Do not include reasoning, markdown, commentary, XML tags, or code fences. No trailing text.\n" +
+        "Schema: {\"title\":\"string\",\"questions\":[{\"type\":\"MultipleChoice\",\"questionText\":\"string\",\"options\":[\"A\",\"B\",\"C\",\"D\"],\"correctAnswer\":\"A\",\"explanation\":\"string\"}]}\n" +
+        $"Generate exactly {requestedCount} questions. Difficulty: {normalizedDifficulty}. Allowed types: {string.Join(", ", normalizedTypes)}.\n" +
+        "MultipleChoice: 4 options; correctAnswer exactly matches one option. TrueFalse: options [\"True\",\"False\"]. ShortAnswer and FillInTheBlank: options []. FillInTheBlank uses ____.\n" +
+        "Study material:\n" +
+        content[..Math.Min(content.Length, 6500)];
 
     public async Task<string> GetStudyTipsAsync(string topic, CancellationToken ct = default)
     {
@@ -415,89 +472,7 @@ public class AiProviderFactory : IAiService
     }
 
     private static GeneratedQuizResult ParseQuiz(string response)
-    {
-        var clean = CleanJsonResponse(response);
-        try
-        {
-            using var document = JsonDocument.Parse(clean);
-            var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object)
-            {
-                throw new InvalidOperationException("AI quiz response must be a JSON object.");
-            }
-
-            var result = new GeneratedQuizResult
-            {
-                Title = root.TryGetProperty("title", out var title)
-                    ? title.GetString()?.Trim() ?? "Generated Quiz"
-                    : "Generated Quiz"
-            };
-
-            if (!root.TryGetProperty("questions", out var questions) ||
-                questions.ValueKind != JsonValueKind.Array)
-            {
-                throw new InvalidOperationException("AI quiz response did not include a questions array.");
-            }
-
-            foreach (var question in questions.EnumerateArray())
-            {
-                var type = question.TryGetProperty("type", out var typeElement)
-                    ? NormalizeQuestionType(typeElement.GetString() ?? "")
-                    : "MultipleChoice";
-                var questionText = question.TryGetProperty("questionText", out var textElement)
-                    ? textElement.GetString()?.Trim() ?? string.Empty
-                    : string.Empty;
-                var correctAnswer = question.TryGetProperty("correctAnswer", out var answerElement)
-                    ? answerElement.GetString()?.Trim() ?? string.Empty
-                    : string.Empty;
-                var explanation = question.TryGetProperty("explanation", out var explanationElement)
-                    ? explanationElement.GetString()?.Trim() ?? string.Empty
-                    : string.Empty;
-                var options = ReadOptions(question);
-
-                if (type == "TrueFalse")
-                {
-                    options = new List<string> { "True", "False" };
-                    correctAnswer = correctAnswer.Equals("false", StringComparison.OrdinalIgnoreCase)
-                        ? "False"
-                        : "True";
-                }
-
-                if (type == "MultipleChoice" &&
-                    options.Count > 0 &&
-                    !options.Any(option => option.Equals(correctAnswer, StringComparison.OrdinalIgnoreCase)))
-                {
-                    correctAnswer = options[0];
-                }
-
-                if (string.IsNullOrWhiteSpace(questionText) ||
-                    string.IsNullOrWhiteSpace(correctAnswer))
-                {
-                    continue;
-                }
-
-                result.Questions.Add(new GeneratedQuizQuestionResult
-                {
-                    Type = type,
-                    QuestionText = questionText,
-                    Options = type is "ShortAnswer" or "FillInTheBlank" ? new List<string>() : options,
-                    CorrectAnswer = correctAnswer,
-                    Explanation = explanation
-                });
-            }
-
-            if (result.Questions.Count == 0)
-            {
-                throw new InvalidOperationException("AI quiz response contained no valid questions.");
-            }
-
-            return result;
-        }
-        catch (JsonException ex)
-        {
-            throw new InvalidOperationException("AI quiz response was not valid JSON.", ex);
-        }
-    }
+        => QuizResponseParser.Parse(response);
 
     private static List<string> ReadOptions(JsonElement question)
     {
