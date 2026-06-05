@@ -22,6 +22,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Question> Questions { get; set; } = null!;
     public DbSet<QuizAttempt> QuizAttempts { get; set; } = null!;
     public DbSet<QuizAttemptAnswer> QuizAttemptAnswers { get; set; } = null!;
+    public DbSet<StudyPlanItem> StudyPlanItems { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -58,6 +59,11 @@ public class ApplicationDbContext : DbContext
                   .WithOne(e => e.User)
                   .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasMany(e => e.StudyPlanItems)
+                  .WithOne(e => e.User)
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<UserAiSettings>(entity =>
@@ -90,6 +96,11 @@ public class ApplicationDbContext : DbContext
                   .WithOne(e => e.Course)
                   .HasForeignKey(e => e.CourseId)
                   .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasMany<StudyPlanItem>()
+                  .WithOne(e => e.Course)
+                  .HasForeignKey(e => e.CourseId)
+                  .OnDelete(DeleteBehavior.NoAction);
         });
 
         // Note entity configuration
@@ -103,6 +114,11 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.AttachmentBase64);
 
             entity.HasMany<Quiz>()
+                  .WithOne(e => e.Note)
+                  .HasForeignKey(e => e.NoteId)
+                  .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasMany<StudyPlanItem>()
                   .WithOne(e => e.Note)
                   .HasForeignKey(e => e.NoteId)
                   .OnDelete(DeleteBehavior.NoAction);
@@ -155,6 +171,11 @@ public class ApplicationDbContext : DbContext
                   .WithOne(e => e.Quiz)
                   .HasForeignKey(e => e.QuizId)
                   .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany<StudyPlanItem>()
+                  .WithOne(e => e.Quiz)
+                  .HasForeignKey(e => e.QuizId)
+                  .OnDelete(DeleteBehavior.NoAction);
         });
 
         modelBuilder.Entity<Question>(entity =>
@@ -191,6 +212,21 @@ public class ApplicationDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(e => e.QuestionId)
                   .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<StudyPlanItem>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.UserId, e.ScheduledFor });
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(300);
+            entity.Property(e => e.Description).HasMaxLength(2000);
+            entity.Property(e => e.PlanType).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.Status).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.Priority).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.Source).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.EstimatedMinutes).IsRequired();
+            entity.Property(e => e.ScheduledFor).IsRequired();
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
         });
 
     }

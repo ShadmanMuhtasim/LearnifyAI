@@ -12,6 +12,7 @@ import Quizzes from './pages/Quizzes';
 import QuizTaking from './pages/QuizTaking';
 import QuizResult from './pages/QuizResult';
 import Settings from './pages/Settings';
+import StudyPlanner from './pages/StudyPlanner';
 import PrivateRoute from './components/PrivateRoute';
 import Layout from './components/Layout/Layout';
 import { Toaster } from 'react-hot-toast';
@@ -100,6 +101,14 @@ function App() {
           element={
             <PrivateRoute>
               <Layout><QuizResult /></Layout>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/study-planner"
+          element={
+            <PrivateRoute>
+              <Layout><StudyPlanner /></Layout>
             </PrivateRoute>
           }
         />

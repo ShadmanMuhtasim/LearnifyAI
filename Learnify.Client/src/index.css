@@ -891,6 +891,28 @@ textarea,
   background: #ffffff;
 }
 
+.planner-layout {
+  grid-template-columns: minmax(0, 1fr) 320px;
+}
+
+.planner-item {
+  display: grid;
+  gap: 16px;
+}
+
+.planner-description {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.planner-item-meta {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  min-width: 130px;
+  text-align: right;
+}
+
 .result-correct {
   border-color: #a7f3d0;
   background: #f0fdf4;
@@ -986,6 +1008,10 @@ textarea,
 
   .ai-panel {
     position: static;
+  }
+
+  .planner-layout {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1084,5 +1110,10 @@ textarea,
 
   .heatmap-grid .hide-mobile {
     display: none;
+  }
+
+  .planner-item-meta {
+    justify-items: start;
+    text-align: left;
   }
 }

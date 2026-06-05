@@ -27,6 +27,7 @@ public sealed class ControllerIntegrationTests : IClassFixture<LearnifyWebApplic
     [InlineData("/api/ai/provider")]
     [InlineData("/api/user/ai-settings")]
     [InlineData("/api/quizzes")]
+    [InlineData("/api/study-planner")]
     public async Task ProtectedEndpoints_Return401WithoutJwt(string path)
     {
         var response = await _client.GetAsync(path);
@@ -348,6 +349,142 @@ public sealed class ControllerIntegrationTests : IClassFixture<LearnifyWebApplic
         var response = await _client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task StudyPlanner_FreshUserSummaryReturnsZeros()
+    {
+        var token = await RegisterAndGetTokenAsync();
+
+        var summary = await GetApiDataAsync<StudyPlanSummaryDto>("/api/study-planner/summary", token);
+        var items = await GetApiDataAsync<List<StudyPlanItemDto>>("/api/study-planner", token);
+
+        Assert.Empty(items);
+        Assert.Equal(0, summary.PendingCount);
+        Assert.Equal(0, summary.CompletedCount);
+        Assert.Equal(0, summary.TodayCount);
+        Assert.Equal(0, summary.OverdueCount);
+        Assert.Equal(0, summary.TotalEstimatedMinutesToday);
+        Assert.Null(summary.NextItem);
+        Assert.Empty(summary.Suggestions);
+    }
+
+    [Fact]
+    public async Task StudyPlanner_UserCanCreateListCompleteAndDeleteOwnItem()
+    {
+        var token = await RegisterAndGetTokenAsync();
+        var course = await CreateCourseAsync(token);
+        var note = await CreateNoteAsync(token, course.Id);
+
+        var created = await PostApiDataAsync<StudyPlanItemDto>(
+            "/api/study-planner",
+            new CreateStudyPlanItemRequest
+            {
+                CourseId = course.Id,
+                NoteId = note.Id,
+                Title = "Review integration note",
+                Description = "Prepare for recall practice",
+                PlanType = "ReviewNote",
+                ScheduledFor = DateTime.UtcNow.AddHours(2),
+                EstimatedMinutes = 25,
+                Priority = "High"
+            },
+            token,
+            HttpStatusCode.Created);
+
+        Assert.Equal("Review integration note", created.Title);
+        Assert.Equal("Pending", created.Status);
+        Assert.Equal(course.Id, created.CourseId);
+        Assert.Equal(note.Id, created.NoteId);
+
+        var items = await GetApiDataAsync<List<StudyPlanItemDto>>("/api/study-planner", token);
+        Assert.Contains(items, item => item.Id == created.Id);
+
+        var completed = await PostApiDataAsync<StudyPlanItemDto>(
+            $"/api/study-planner/{created.Id}/complete",
+            new { },
+            token);
+
+        Assert.Equal("Completed", completed.Status);
+        Assert.NotNull(completed.CompletedAt);
+
+        using var deleteRequest = NewRequest(HttpMethod.Delete, $"/api/study-planner/{created.Id}", token);
+        var deleteResponse = await _client.SendAsync(deleteRequest);
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
+
+        var remaining = await GetApiDataAsync<List<StudyPlanItemDto>>("/api/study-planner", token);
+        Assert.DoesNotContain(remaining, item => item.Id == created.Id);
+    }
+
+    [Fact]
+    public async Task StudyPlanner_ProtectsCrossUserItems()
+    {
+        var ownerToken = await RegisterAndGetTokenAsync();
+        var otherToken = await RegisterAndGetTokenAsync();
+
+        var created = await PostApiDataAsync<StudyPlanItemDto>(
+            "/api/study-planner",
+            new CreateStudyPlanItemRequest
+            {
+                Title = "Private study plan",
+                PlanType = "Custom",
+                ScheduledFor = DateTime.UtcNow.AddDays(1),
+                EstimatedMinutes = 15,
+                Priority = "Medium"
+            },
+            ownerToken,
+            HttpStatusCode.Created);
+
+        var otherItems = await GetApiDataAsync<List<StudyPlanItemDto>>("/api/study-planner", otherToken);
+        Assert.DoesNotContain(otherItems, item => item.Id == created.Id);
+
+        using var completeRequest = NewRequest(HttpMethod.Post, $"/api/study-planner/{created.Id}/complete", otherToken, new { });
+        var completeResponse = await _client.SendAsync(completeRequest);
+        Assert.Equal(HttpStatusCode.NotFound, completeResponse.StatusCode);
+
+        using var deleteRequest = NewRequest(HttpMethod.Delete, $"/api/study-planner/{created.Id}", otherToken);
+        var deleteResponse = await _client.SendAsync(deleteRequest);
+        Assert.Equal(HttpStatusCode.NotFound, deleteResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task StudyPlanner_RejectsNonOwnedCourseReference()
+    {
+        var ownerToken = await RegisterAndGetTokenAsync();
+        var otherToken = await RegisterAndGetTokenAsync();
+        var ownerCourse = await CreateCourseAsync(ownerToken);
+
+        using var request = NewRequest(
+            HttpMethod.Post,
+            "/api/study-planner",
+            otherToken,
+            new CreateStudyPlanItemRequest
+            {
+                CourseId = ownerCourse.Id,
+                Title = "Use someone else's course",
+                PlanType = "ReviseCourse",
+                ScheduledFor = DateTime.UtcNow.AddDays(1),
+                EstimatedMinutes = 20,
+                Priority = "Medium"
+            });
+        var response = await _client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Course not found", body);
+    }
+
+    [Fact]
+    public async Task StudyPlanner_SummaryReturnsUsefulSuggestionsFromNotes()
+    {
+        var token = await RegisterAndGetTokenAsync();
+        var course = await CreateCourseAsync(token);
+        await CreateNoteAsync(token, course.Id);
+
+        var summary = await GetApiDataAsync<StudyPlanSummaryDto>("/api/study-planner/summary", token);
+
+        Assert.Contains(summary.Suggestions, suggestion => suggestion.Title == "Review latest note");
+        Assert.Contains(summary.Suggestions, suggestion => suggestion.Title == "Generate or take a quiz");
     }
 
     private async Task<string> RegisterAndGetTokenAsync()

@@ -1,6 +1,6 @@
 # Feature Gaps
 
-Last updated: 2026-06-04
+Last updated: 2026-06-05
 
 ## M6R Smart Learning Core Status
 
@@ -85,7 +85,6 @@ Latest M7 re-verification on 2026-06-05 passed with Gemini default `gemini-3.5-f
 
 ## Still Future Work
 
-- Study planner
 - Analytics and achievements
 - Backend analytics for dashboard widgets
 - AI Tutor backend
@@ -125,3 +124,18 @@ Latest M7 re-verification on 2026-06-05 passed with Gemini default `gemini-3.5-f
 - Remaining caveat: the post-fix live 8-question Qwen runtime smoke still needs confirmation because the local command approval environment hit its usage limit before the runtime model/API smoke could run.
 - Follow-up reliability fix adds a sequential one-question fallback for LocalOpenAI 7- and 8-question quizzes after batch generation cannot fill the requested size. Automated tests cover 7-question fallback, 8-question fallback, duplicate skipping, and max-attempt failure.
 - Remaining caveat: live 7/8-question Qwen runtime smoke still needs confirmation because `http://127.0.0.1:8080/v1/models` was unreachable during the latest verification pass.
+
+## M10 Study Planner Status
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Planner persistence | Complete | Added `StudyPlanItem`, EF configuration, and migration for per-user scheduled study tasks. |
+| Planner API | Complete | Protected CRUD/list/upcoming/summary/complete endpoints are scoped by authenticated user. |
+| Linked learning material | Complete | Optional course, note, and quiz references are validated as owned by the current user. |
+| Completion tracking | Complete | Items can be marked completed with `CompletedAt` and updated status. |
+| Basic suggestions | Complete | Non-AI suggestions are generated from existing notes, weak quiz attempts, and pending planner items. |
+| Frontend Study Planner page | Complete | `/study-planner` includes summary cards, create/edit form, list filters, complete/delete actions, empty state, and suggestions. |
+| Dashboard integration | Complete | Dashboard shows real study planner summary/CTA and no fake planner data. |
+| Automated tests | Complete | Backend tests pass 54 total; frontend tests pass 31 total after M10 additions. |
+
+Future planner gaps remain: drag-and-drop calendar, recurring tasks, notifications/reminders, AI-generated plan optimization, time-spent tracking, and Pomodoro/focus mode.

@@ -15,5 +15,6 @@ public class User : BaseEntity
 
     public virtual ICollection<Course> CreatedCourses { get; set; } = new List<Course>();
     public virtual ICollection<Note> Notes { get; set; } = new List<Note>();
+    public virtual ICollection<StudyPlanItem> StudyPlanItems { get; set; } = new List<StudyPlanItem>();
     public virtual UserAiSettings? AiSettings { get; set; }
 }

@@ -8,12 +8,12 @@ const navItems = [
   { to: '/notes', label: 'Notes', icon: 'NT' },
   { to: '/flashcards', label: 'Flashcards', icon: 'FC' },
   { to: '/quizzes', label: 'Quizzes', icon: 'QZ' },
+  { to: '/study-planner', label: 'Study Planner', icon: 'SP' },
   { to: '/settings', label: 'Settings', icon: 'ST' },
 ];
 
 const futureItems = [
   { label: 'AI Tutor', icon: 'AI' },
-  { label: 'Study Planner', icon: 'SP' },
   { label: 'Analytics', icon: 'AN' },
   { label: 'Achievements', icon: 'XP' },
 ];

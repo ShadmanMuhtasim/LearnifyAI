@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import apiClient from '../services/api';
+import { studyPlannerService, type StudyPlanSummary } from '../services/studyPlannerService';
 import { Badge, Card, PageHeader, StatCard } from '../components/UI/Primitives';
 
 type Course = {
@@ -26,6 +27,16 @@ type DashboardTotals = {
   quizzes: number;
 };
 
+const emptyPlannerSummary: StudyPlanSummary = {
+  pendingCount: 0,
+  completedCount: 0,
+  todayCount: 0,
+  overdueCount: 0,
+  totalEstimatedMinutesToday: 0,
+  nextItem: null,
+  suggestions: [],
+};
+
 const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const periods = ['Morning', 'Afternoon', 'Evening'];
 
@@ -43,6 +54,7 @@ const asArray = <T,>(value: unknown): T[] => {
 export default function Dashboard() {
   const user = useAuthStore((state) => state.user);
   const [totals, setTotals] = useState<DashboardTotals>({ courses: 0, notes: 0, quizzes: 0 });
+  const [plannerSummary, setPlannerSummary] = useState<StudyPlanSummary>(emptyPlannerSummary);
   const [recentNotes, setRecentNotes] = useState<Note[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,10 +67,11 @@ export default function Dashboard() {
       setError(null);
 
       try {
-        const [coursesResponse, notesResponse, quizzesResponse] = await Promise.all([
+        const [coursesResponse, notesResponse, quizzesResponse, studySummary] = await Promise.all([
           apiClient.get('/api/courses'),
           apiClient.get('/api/notes'),
           apiClient.get('/api/quizzes'),
+          studyPlannerService.getSummary(),
         ]);
 
         const courses = asArray<Course>(coursesResponse);
@@ -71,6 +84,7 @@ export default function Dashboard() {
             notes: notes.length,
             quizzes: quizzes.length,
           });
+          setPlannerSummary(studySummary);
           setRecentNotes(
             notes
               .slice()
@@ -86,6 +100,7 @@ export default function Dashboard() {
         if (isMounted) {
           setError('Unable to load your dashboard data right now.');
           setTotals({ courses: 0, notes: 0, quizzes: 0 });
+          setPlannerSummary(emptyPlannerSummary);
           setRecentNotes([]);
         }
       } finally {
@@ -159,6 +174,26 @@ export default function Dashboard() {
         </Card>
 
         <div className="stack">
+          <Card>
+            <div className="split">
+              <div>
+                <div className="eyebrow mb-3">Today's Study Plan</div>
+                <h2>{plannerSummary.todayCount} task{plannerSummary.todayCount === 1 ? '' : 's'}</h2>
+              </div>
+              <Badge tone={plannerSummary.overdueCount > 0 ? 'danger' : 'primary'}>
+                {plannerSummary.pendingCount} pending
+              </Badge>
+            </div>
+            <p className="muted mt-3">
+              {plannerSummary.nextItem
+                ? `Next: ${plannerSummary.nextItem.title}`
+                : 'No study tasks yet. Create your first plan item.'}
+            </p>
+            <Link to="/study-planner" className="ui-button ui-button-secondary mt-3">
+              Open Study Planner
+            </Link>
+          </Card>
+
           <Card>
             <div className="eyebrow mb-3">Quick Actions</div>
             <div className="grid grid-2">

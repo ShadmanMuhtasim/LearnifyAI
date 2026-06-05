@@ -732,3 +732,35 @@ For production: Azure Key Vault or environment variables injected at deployment 
 - `git diff --check` - passed; only CRLF conversion warnings were printed.
 - Conflict marker scan - no markers found.
 - LocalOpenAI live runtime smoke was blocked because `http://127.0.0.1:8080/v1/models` was unreachable in this pass.
+
+## M10 - Study Planner
+
+- Added real per-user study plan persistence with `StudyPlanItem`, optional links to courses, notes, and quizzes, and EF migration `AddStudyPlanner`.
+- Added protected planner endpoints:
+  - `GET /api/study-planner`
+  - `GET /api/study-planner/upcoming`
+  - `GET /api/study-planner/summary`
+  - `POST /api/study-planner`
+  - `PUT /api/study-planner/{id}`
+  - `POST /api/study-planner/{id}/complete`
+  - `DELETE /api/study-planner/{id}`
+- Added `IStudyPlannerService` / `StudyPlannerService` for create, update, delete, complete, date/status listing, upcoming items, summary, and non-AI suggestions.
+- Added ownership validation for linked `CourseId`, `NoteId`, and `QuizId`; non-owned planner items remain hidden and return 404 on mutation.
+- Added frontend service `studyPlannerService.ts`, protected `/study-planner` route, enabled sidebar navigation, and a Study Planner page with summary cards, create/edit form, item list, complete/delete actions, and suggestions.
+- Added a real Dashboard "Today's Study Plan" card backed by `/api/study-planner/summary`; fresh users see zero counts and a CTA, not fake planner data.
+- Added backend integration tests for auth, fresh-user zeros, create/list/complete/delete, cross-user protection, invalid non-owned references, and note-based suggestions.
+- Added frontend tests for the Study Planner empty state, item rendering, create flow, complete flow, Dashboard planner summary, and enabled nav link.
+
+### Verification - 2026-06-05
+
+- `dotnet restore` - passed.
+- `dotnet build --no-restore` - passed with 0 warnings and 0 errors.
+- `dotnet test --no-restore` - passed, 54 backend tests.
+- `dotnet list package --vulnerable --include-transitive` - passed; no vulnerable packages reported.
+- `npm test -- --run` in `Learnify.Client` - passed, 12 files / 31 tests.
+- `npm run build` in `Learnify.Client` - passed.
+- `git diff --check` - passed; only CRLF conversion warnings were printed.
+- Conflict marker scan - no markers found.
+- Runtime smoke passed through local API on `http://localhost:5073`: fresh user planner returned zero counts/items, note-based suggestions appeared, course/note-linked planner item create/list/update/complete/delete persisted, and User B could not see or complete User A's planner item.
+- Frontend route smoke passed through Vite: `GET http://127.0.0.1:5173/study-planner` returned 200 with the SPA root.
+- Remaining planner gaps: drag-and-drop calendar, recurring tasks, notifications/reminders, AI-generated plan optimization, time-spent tracking, and Pomodoro/focus mode.

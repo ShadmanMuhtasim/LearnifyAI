@@ -194,8 +194,12 @@ Learnify.Client          → React + TypeScript frontend (Vite)
 
 | Feature | Backend | Frontend | Overall |
 |---|---|---|---|
+| Planner Items | ✅ | ✅ | ✅ Complete |
+| Daily Task List | ✅ | ✅ | ✅ Complete |
+| Completion Tracking | ✅ | ✅ | ✅ Complete |
+| Basic Suggestions | ✅ | ✅ | ✅ Complete without AI |
+| Dashboard Upcoming Study | ✅ | ✅ | ✅ Complete |
 | Calendar View | ❌ | ❌ | ❌ Not Started |
-| Daily Task List | ❌ | ❌ | ❌ Not Started |
 | Weekly Goals | ❌ | ❌ | ❌ Not Started |
 | AI-Generated Study Schedule | ❌ | ❌ | ❌ Not Started |
 | Reminders / Notifications | ❌ | ❌ | ❌ Not Started |
@@ -240,7 +244,7 @@ Learnify.Client          → React + TypeScript frontend (Vite)
 | Learning Statistics Cards | ❌ | ❌ | ❌ Not Started |
 | Study Progress Bars | ❌ | ❌ | ❌ Not Started |
 | Recent Notes Widget | ❌ | ❌ | ❌ Not Started |
-| Upcoming Study Sessions Widget | ❌ | ❌ | ❌ Not Started |
+| Upcoming Study Sessions Widget | ✅ | ✅ | ✅ Complete for planner summary |
 | AI Recommendations Widget | ❌ | ❌ | ❌ Not Started |
 | Quick Actions Panel | N/A | ✅ | ✅ Complete |
 | Recently Generated Quizzes | ❌ | ❌ | ❌ Not Started |
@@ -343,6 +347,22 @@ dotnet list Learnify.Tests package --vulnerable --include-transitive
 
 ---
 
+## Study Planner API
+
+Protected planner endpoints are scoped to the authenticated user:
+
+- `GET /api/study-planner?from=&to=&status=` - list planner items.
+- `GET /api/study-planner/upcoming` - next pending items.
+- `GET /api/study-planner/summary` - counts, today estimate, next item, and basic suggestions.
+- `POST /api/study-planner` - create a planner item.
+- `PUT /api/study-planner/{id}` - update a planner item.
+- `POST /api/study-planner/{id}/complete` - mark an item complete.
+- `DELETE /api/study-planner/{id}` - delete an owned item.
+
+Planner items can link to an owned course, note, or quiz. Non-owned references are rejected and cross-user planner items are not exposed.
+
+---
+
 ## AI Provider Configuration
 
 Configured in `Learnify.Web/appsettings.json`:
@@ -406,7 +426,7 @@ LearnifyAI/
 | M7 — Quiz Engine | AI-generated quizzes, taking flow, attempts, scoring, modes, timer, retry, results | ✅ Complete for M7.1 quiz polish; advanced analytics/adaptive features remain future work |
 | M8 — Testing, QA & UI Polish | Backend unit/provider/integration tests, frontend page tests, builds, vulnerability audit, Stitch-inspired UI polish | ✅ M8.3 UI polish complete; Playwright E2E remains |
 | M9 — Analytics & Achievements | Progress tracking, gamification | ⏳ Planned |
-| M10 — Dashboard & UI Polish | Full dashboard, dark mode, animations | ⏳ Planned |
-| M11 — AI Tutor & Study Planner | Chat interface, calendar scheduler | ⏳ Planned |
+| M10 — Study Planner | Per-user planner items, completion, suggestions, dashboard card | ✅ Complete for first version |
+| M11 — AI Tutor & Advanced Planner | Chat interface, calendar scheduler, reminders | ⏳ Planned |
 | M12 — Deployment & DevOps | Docker, CI/CD, Azure App Service | ⏳ Planned |
 | M13 — Docs & Launch | Swagger, ADRs, getting started guide | ⏳ Planned |
