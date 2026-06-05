@@ -687,3 +687,48 @@ For production: Azure Key Vault or environment variables injected at deployment 
 - `dotnet list package --vulnerable --include-transitive` - passed; no vulnerable packages reported.
 - `npm test -- --run` in `Learnify.Client` - passed, 9 files / 25 tests.
 - `npm run build` in `Learnify.Client` - passed.
+
+## LocalOpenAI / Qwen Quiz JSON Reliability Follow-up
+
+- Added robust quiz response extraction and schema normalization for local model outputs:
+  - raw JSON object or array
+  - fenced JSON
+  - leading/trailing text
+  - `<think>...</think>` reasoning blocks
+  - common aliases such as `question`, `choices`, `answer`, and `correct_answer`
+- Added strict quiz schema validation so malformed questions fail clearly instead of silently creating bad quizzes.
+- Improved LocalOpenAI quiz prompts with JSON-only and `/no_think` instructions for local/Qwen requests.
+- Added LocalOpenAI-only adaptive batching for larger quiz requests:
+  - requests over 5 questions are generated in smaller batches
+  - default local batch size is 4 questions
+  - retry once with a smaller 2-question batch after empty content, length-style failures, invalid JSON, or invalid schema
+  - merged result must satisfy the requested question count or return a clear “try fewer questions or switch provider” error
+- Gemini, Mock, Ollama, quiz scoring, and M9 analytics behavior were not changed.
+
+### Verification
+
+- `dotnet build --no-restore` - passed with 0 warnings and 0 errors.
+- `dotnet test --no-restore` - passed, 45 backend tests.
+- `dotnet list package --vulnerable --include-transitive` - passed; no vulnerable packages reported.
+- `npm test -- --run` in `Learnify.Client` - passed, 9 files / 25 tests.
+- `npm run build` in `Learnify.Client` - passed.
+- LocalOpenAI 3/5/8-question live runtime smoke after batching was not completed in this pass because the command approval environment hit its usage limit before the model probe/API smoke could run.
+
+## LocalOpenAI / Qwen 7-8 Question Quiz Reliability Follow-up
+
+- Added a stronger LocalOpenAI-only fallback for larger quizzes when 4-question batches and 2-question retry batches cannot fill the requested quiz size.
+- The fallback generates exactly one question per sequential LocalOpenAI request, parses each response with `QuizResponseParser`, skips duplicate question text, rotates compact note excerpts across attempts, and continues until the requested count is reached or the attempt limit is exhausted.
+- The fallback keeps `/no_think`, compact JSON-only prompting, low temperature, small output budgets, and the existing strict validation rules.
+- The existing clear failure remains in place if local generation cannot produce enough valid unique questions: `The local model could not generate the requested quiz size. Try fewer questions or switch provider.`
+- Gemini, Ollama, Mock, quiz scoring, and M9 analytics behavior were not changed.
+
+### Verification
+
+- `dotnet build --no-restore` - passed with 0 warnings and 0 errors.
+- `dotnet test --no-restore` - passed, 48 backend tests.
+- `dotnet list package --vulnerable --include-transitive` - passed; no vulnerable packages reported.
+- `npm test -- --run` in `Learnify.Client` - passed, 9 files / 25 tests.
+- `npm run build` in `Learnify.Client` - passed.
+- `git diff --check` - passed; only CRLF conversion warnings were printed.
+- Conflict marker scan - no markers found.
+- LocalOpenAI live runtime smoke was blocked because `http://127.0.0.1:8080/v1/models` was unreachable in this pass.

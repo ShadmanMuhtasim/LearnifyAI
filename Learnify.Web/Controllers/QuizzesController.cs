@@ -38,6 +38,15 @@ public class QuizzesController : ControllerBase
         {
             return NotFound(ApiResponse<QuizDto>.NotFound("Note not found."));
         }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("LocalOpenAI response did not include", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("choices[0].message.content", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning(ex, "LocalOpenAI returned empty quiz content.");
+            return StatusCode(
+                502,
+                ApiResponse<QuizDto>.BadRequest("The local model did not return usable quiz content. Try fewer questions or switch provider."));
+        }
         catch (InvalidOperationException ex)
         {
             return BadRequest(ApiResponse<QuizDto>.BadRequest(ex.Message));
