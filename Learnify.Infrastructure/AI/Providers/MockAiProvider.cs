@@ -13,6 +13,32 @@ public class MockAiProvider : IAiProvider
 
     public Task<string> CompleteAsync(string prompt, AiRequestOptions options, CancellationToken ct = default)
     {
+        if (prompt.Contains("Generate a quiz", StringComparison.OrdinalIgnoreCase) ||
+            prompt.Contains("\"questions\"", StringComparison.OrdinalIgnoreCase))
+        {
+            return Task.FromResult("""
+            {
+              "title": "Mock Integration Quiz",
+              "questions": [
+                {
+                  "type": "MultipleChoice",
+                  "questionText": "Which study habit best supports long-term retention?",
+                  "options": ["Cramming once", "Spaced repetition", "Skipping review", "Passive rereading only"],
+                  "correctAnswer": "Spaced repetition",
+                  "explanation": "Spaced repetition schedules review over time, which strengthens recall."
+                },
+                {
+                  "type": "MultipleChoice",
+                  "questionText": "What should you do after reading a concept?",
+                  "options": ["Immediately test recall", "Close the material forever", "Ignore examples", "Avoid practice"],
+                  "correctAnswer": "Immediately test recall",
+                  "explanation": "Active recall helps reveal what you understand and what needs review."
+                }
+              ]
+            }
+            """.Trim());
+        }
+
         if (prompt.Contains("JSON array") || prompt.Contains("flashcard") || prompt.Contains("term"))
         {
             return Task.FromResult("""

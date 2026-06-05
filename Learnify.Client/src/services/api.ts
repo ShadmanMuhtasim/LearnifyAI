@@ -74,6 +74,10 @@ apiClient.interceptors.response.use(
           userId: user.id,
         });
 
+        if (localStorage.getItem('refreshToken') !== refreshToken) {
+          return Promise.reject(error);
+        }
+
         const dataObj = response.data.data || response.data;
         const token = dataObj.token || dataObj.accessToken || '';
         const nextRefreshToken = dataObj.refreshToken || refreshToken;

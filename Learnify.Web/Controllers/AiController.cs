@@ -263,10 +263,15 @@ public class AiController : ControllerBase
         {
             return StatusCode(429, new { success = false, message = ex.Message });
         }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "AI provider failed while summarizing note '{NoteId}'", request.NoteId);
+            return StatusCode(502, new { success = false, message = ex.Message });
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error summarizing note '{NoteId}'", request.NoteId);
-            return StatusCode(500, new { success = false, message = "Failed to summarize note." });
+            return StatusCode(502, new { success = false, message = "AI provider failed while summarizing this note. Check the active provider settings and try again." });
         }
     }
 
@@ -298,10 +303,15 @@ public class AiController : ControllerBase
         {
             return StatusCode(429, new { success = false, message = ex.Message });
         }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "AI provider failed while generating flashcards for note '{NoteId}'", request.NoteId);
+            return StatusCode(502, new { success = false, message = ex.Message });
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating flashcards for note '{NoteId}'", request.NoteId);
-            return StatusCode(500, new { success = false, message = "Failed to generate flashcards." });
+            return StatusCode(502, new { success = false, message = "AI provider failed while generating flashcards. Check the active provider settings and try again." });
         }
     }
 
@@ -324,10 +334,15 @@ public class AiController : ControllerBase
         {
             return StatusCode(429, new { success = false, message = ex.Message });
         }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "AI provider failed while generating study tips for topic '{Topic}'", request.Topic);
+            return StatusCode(502, new { success = false, message = ex.Message });
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating study tips for topic '{Topic}'", request.Topic);
-            return StatusCode(500, new { success = false, message = "Failed to generate study tips." });
+            return StatusCode(502, new { success = false, message = "AI provider failed while generating study tips. Check the active provider settings and try again." });
         }
     }
 

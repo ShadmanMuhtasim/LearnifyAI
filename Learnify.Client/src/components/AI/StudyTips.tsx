@@ -53,7 +53,7 @@ const StudyTips: React.FC<StudyTipsProps> = ({ topic }) => {
         marginTop: '12px'
       }}>
         <h4 style={{ margin: '0 0 12px 0', color: '#6c757d', fontSize: '14px' }}>
-          📚 AI Study Tips for "{topic}"
+        AI Study Tips for "{topic}"
         </h4>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {[1, 2, 3, 4].map(i => (
@@ -124,33 +124,29 @@ const StudyTips: React.FC<StudyTipsProps> = ({ topic }) => {
     );
   }
 
-  // Parse tips (split by bullet points or newlines)
-  const tipsList = state.tips
-    .split(/\n/)
-    .map(t => t.trim())
-    .filter(t => t.length > 0);
-
   return (
     <div style={{
       padding: '16px',
       borderRadius: '8px',
       backgroundColor: '#fffbeb',
       border: '1px solid #fde68a',
-      marginTop: '12px'
+      marginTop: '12px',
+      maxHeight: '60vh',
+      overflowY: 'auto',
+      overflowWrap: 'anywhere'
     }}>
       <h4 style={{ margin: '0 0 12px 0', color: '#92400e', fontSize: '14px' }}>
-        📚 AI Study Tips for "{topic}"
+        AI Study Tips for "{topic}"
       </h4>
-      <ul style={{
+      <p style={{
         margin: 0,
-        paddingLeft: '20px',
         color: '#78350f',
-        lineHeight: '1.8'
+        lineHeight: '1.8',
+        whiteSpace: 'pre-wrap',
+        overflowWrap: 'anywhere'
       }}>
-        {tipsList.map((tip, index) => (
-          <li key={index}>{tip}</li>
-        ))}
-      </ul>
+        {state.tips}
+      </p>
     </div>
   );
 };

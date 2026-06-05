@@ -1,55 +1,106 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import apiClient from '../services/api';
 import { Badge, Card, PageHeader, StatCard } from '../components/UI/Primitives';
 
-interface Course {
+type Course = {
   id: string;
-}
+  title: string;
+};
 
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-}
+type Note = {
+  id: string;
+  title: string;
+  updatedAt?: string;
+  createdAt?: string;
+};
 
-const heatmapRows = [
-  { label: 'Morning', levels: [1, 2, 1, 2, 4, 1] },
-  { label: 'Afternoon', levels: [1, 3, 2, 1, 1, 2] },
-  { label: 'Evening', levels: [2, 1, 4, 3, 1, 1] },
-];
+type Quiz = {
+  id: string;
+};
+
+type DashboardTotals = {
+  courses: number;
+  notes: number;
+  quizzes: number;
+};
+
+const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const periods = ['Morning', 'Afternoon', 'Evening'];
+
+const unwrap = <T,>(response: unknown): T => {
+  const value = response as { data?: unknown };
+  const data = value?.data as { data?: T; items?: T } | T | undefined;
+  return ((data as { data?: T })?.data ?? (data as { items?: T })?.items ?? data ?? response) as T;
+};
+
+const asArray = <T,>(value: unknown): T[] => {
+  const unwrapped = unwrap<unknown>(value);
+  return Array.isArray(unwrapped) ? (unwrapped as T[]) : [];
+};
 
 export default function Dashboard() {
-  const { user, isAuthenticated } = useAuthStore();
-  const [courseCount, setCourseCount] = useState(0);
+  const user = useAuthStore((state) => state.user);
+  const [totals, setTotals] = useState<DashboardTotals>({ courses: 0, notes: 0, quizzes: 0 });
+  const [recentNotes, setRecentNotes] = useState<Note[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      setCourseCount(0);
-      return;
-    }
-
     let isMounted = true;
 
-    const fetchCourseCount = async () => {
+    const loadDashboard = async () => {
+      setIsLoading(true);
+      setError(null);
+
       try {
-        const response = await apiClient.get<ApiResponse<Course[]>>('/api/courses');
-        if (isMounted && response.data.success) {
-          setCourseCount(response.data.data.length);
+        const [coursesResponse, notesResponse, quizzesResponse] = await Promise.all([
+          apiClient.get('/api/courses'),
+          apiClient.get('/api/notes'),
+          apiClient.get('/api/quizzes'),
+        ]);
+
+        const courses = asArray<Course>(coursesResponse);
+        const notes = asArray<Note>(notesResponse);
+        const quizzes = asArray<Quiz>(quizzesResponse);
+
+        if (isMounted) {
+          setTotals({
+            courses: courses.length,
+            notes: notes.length,
+            quizzes: quizzes.length,
+          });
+          setRecentNotes(
+            notes
+              .slice()
+              .sort((first, second) => {
+                const firstDate = new Date(first.updatedAt ?? first.createdAt ?? 0).getTime();
+                const secondDate = new Date(second.updatedAt ?? second.createdAt ?? 0).getTime();
+                return secondDate - firstDate;
+              })
+              .slice(0, 3)
+          );
         }
       } catch {
         if (isMounted) {
-          setCourseCount(0);
+          setError('Unable to load your dashboard data right now.');
+          setTotals({ courses: 0, notes: 0, quizzes: 0 });
+          setRecentNotes([]);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
         }
       }
     };
 
-    void fetchCourseCount();
+    void loadDashboard();
 
     return () => {
       isMounted = false;
     };
-  }, [isAuthenticated]);
+  }, []);
 
   return (
     <div className="stack">
@@ -57,13 +108,17 @@ export default function Dashboard() {
         eyebrow="Dashboard"
         title={`Good morning, ${user?.name || 'Learner'}.`}
         subtitle="Ready to level up today?"
-        actions={<Badge tone="primary">Based on available data</Badge>}
+        actions={<Badge tone="primary">{isLoading ? 'Syncing data' : 'Based on your data'}</Badge>}
       />
 
+      {error && <div className="alert alert-danger">{error}</div>}
+
       <div className="grid grid-4">
-        <StatCard label="Daily Streak" value="5" detail="days, coming soon" tone="warning" />
-        <StatCard label="Weekly Progress" value="82%" detail="visual placeholder" tone="primary" />
-        <StatCard label="Courses" value={courseCount} detail="active learning paths" tone="success" />
+        <StatCard label="Courses" value={totals.courses} detail="active learning paths" tone="success" />
+        <StatCard label="Notes" value={totals.notes} detail="saved study notes" tone="primary" />
+        <StatCard label="Quizzes" value={totals.quizzes} detail="generated quizzes" tone="default" />
+        <StatCard label="Daily Streak" value="0" detail="coming soon" tone="warning" />
+        <StatCard label="Weekly Progress" value="0%" detail="coming soon" tone="primary" />
         <StatCard label="AI Tools" value="4" detail="summary, cards, tips, quizzes" tone="default" />
       </div>
 
@@ -72,28 +127,32 @@ export default function Dashboard() {
           <div className="split mb-4">
             <div>
               <h2>Weekly Learning Heatmap</h2>
-              <p className="muted text-small">A visual study rhythm guide; backend analytics are still future work.</p>
+              <p className="muted text-small">
+                Activity analytics are not available yet, so new accounts start with an empty heatmap.
+              </p>
             </div>
             <Badge tone="muted">Coming soon</Badge>
           </div>
 
           <div className="heatmap">
-            <div className="heatmap-grid">
+            <div className="heatmap-grid heatmap-grid--empty">
               <span />
-              {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
-                <span key={day} className={`heatmap-label${index > 2 ? ' hide-mobile' : ''}`}>{day}</span>
+              {days.map((day, index) => (
+                <span key={day} className={`heatmap-label${index > 2 ? ' hide-mobile' : ''}`}>
+                  {day}
+                </span>
               ))}
-              {heatmapRows.map((row) => (
-                <div key={row.label} style={{ display: 'contents' }}>
-                  <span className="heatmap-label">{row.label}</span>
-                  {row.levels.map((level, index) => (
+              {periods.map((period) => (
+                <Fragment key={period}>
+                  <span className="heatmap-label">{period}</span>
+                  {days.map((day, index) => (
                     <span
-                      key={`${row.label}-${index}`}
-                      className={`heatmap-cell level-${level}${index > 2 ? ' hide-mobile' : ''}`}
-                      aria-label={`${row.label} level ${level}`}
+                      key={`${period}-${day}`}
+                      className={`heatmap-cell level-0${index > 2 ? ' hide-mobile' : ''}`}
+                      aria-label={`${period} ${day}: no activity recorded`}
                     />
                   ))}
-                </div>
+                </Fragment>
               ))}
             </div>
           </div>
@@ -112,13 +171,27 @@ export default function Dashboard() {
 
           <Card style={{ background: 'linear-gradient(135deg, #4f46e5, #3525cd)', color: '#ffffff' }}>
             <div className="eyebrow" style={{ color: 'rgba(255,255,255,0.72)' }}>AI Recommendation</div>
-            <h2 style={{ color: '#ffffff', marginTop: 10 }}>Review your latest notes</h2>
-            <p style={{ color: 'rgba(255,255,255,0.82)', marginTop: 8 }}>
-              Use flashcards or a generated quiz when your note content is ready for AI actions.
-            </p>
-            <Link to="/flashcards" className="ui-button" style={{ marginTop: 16, background: '#ffffff', color: '#3525cd' }}>
-              Start Session
-            </Link>
+            {totals.notes > 0 ? (
+              <>
+                <h2 style={{ color: '#ffffff', marginTop: 10 }}>Review your latest notes</h2>
+                <p style={{ color: 'rgba(255,255,255,0.82)', marginTop: 8 }}>
+                  Use summary, flashcards, study tips, or a generated quiz from Note Detail.
+                </p>
+                <Link to="/notes" className="ui-button" style={{ marginTop: 16, background: '#ffffff', color: '#3525cd' }}>
+                  Start Session
+                </Link>
+              </>
+            ) : (
+              <>
+                <h2 style={{ color: '#ffffff', marginTop: 10 }}>Add your first note</h2>
+                <p style={{ color: 'rgba(255,255,255,0.82)', marginTop: 8 }}>
+                  Personalized recommendations appear after you add learning material.
+                </p>
+                <Link to="/notes" className="ui-button" style={{ marginTop: 16, background: '#ffffff', color: '#3525cd' }}>
+                  Add Note
+                </Link>
+              </>
+            )}
           </Card>
 
           <Card>
@@ -128,10 +201,31 @@ export default function Dashboard() {
                 View all
               </Link>
             </div>
-            <p className="muted mt-3">Recent-note analytics are not available yet. Open Notes to continue studying.</p>
+            {recentNotes.length === 0 ? (
+              <p className="muted mt-3">No notes yet. Open Notes to add your first study material.</p>
+            ) : (
+              <div className="stack mt-3">
+                {recentNotes.map((note) => (
+                  <Link key={note.id} to={`/notes/${note.id}`} className="list-row">
+                    <span>{note.title}</span>
+                    <span className="muted text-small">
+                      {note.updatedAt || note.createdAt
+                        ? new Date(note.updatedAt ?? note.createdAt ?? '').toLocaleDateString()
+                        : 'Recently added'}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
           </Card>
         </div>
       </div>
+
+      <Card>
+        <p className="muted text-small">
+          AI features use your own notes and courses. New accounts start empty until you add materials.
+        </p>
+      </Card>
     </div>
   );
 }

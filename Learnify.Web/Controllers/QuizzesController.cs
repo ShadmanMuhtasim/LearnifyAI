@@ -45,7 +45,7 @@ public class QuizzesController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating quiz.");
-            return StatusCode(500, ApiResponse<QuizDto>.BadRequest("Failed to generate quiz."));
+            return StatusCode(502, ApiResponse<QuizDto>.BadRequest("AI provider failed while generating the quiz. Check the active provider settings and try again."));
         }
     }
 

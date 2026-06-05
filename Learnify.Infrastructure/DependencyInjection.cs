@@ -1,6 +1,7 @@
 using Learnify.Core.Interfaces;
 using Learnify.Infrastructure.AI;
 using Learnify.Infrastructure.AI.Providers;
+using Learnify.Infrastructure.Services;
 using Learnify.Application.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
@@ -26,6 +27,7 @@ public static class DependencyInjection
         services.AddScoped<IAiProvider, OllamaAiProvider>();
         services.AddScoped<IAiProvider, LocalOpenAiProvider>();
         services.AddScoped<IAiProvider, ClaudeAiProvider>();
+        services.AddScoped<IPdfTextExtractor, PdfTextExtractor>();
 
         // Register the factory (which also implements IAiService)
         services.AddSingleton<UserAiSettingsStore>();

@@ -4,7 +4,7 @@
 
 [![Backend Build](https://img.shields.io/badge/backend-passing-brightgreen)]()
 [![Frontend Build](https://img.shields.io/badge/frontend-passing-brightgreen)]()
-[![Milestone](https://img.shields.io/badge/milestone-M8.3%20UI%20polish-brightgreen)]()
+[![Milestone](https://img.shields.io/badge/milestone-M8.5%20runtime%20UX%20%2B%20AI%20reliability-brightgreen)]()
 
 ---
 
@@ -121,7 +121,7 @@ Learnify.Client          → React + TypeScript frontend (Vite)
 | Note Detail View | ✅ | ✅ | ✅ Complete |
 | Create Note (manual text) | ✅ | ❌ | 🔄 Partial |
 | File Upload (.txt, .md) | ✅ | ✅ | ✅ Complete |
-| PDF File Upload | 🔄 | ✅ | 🔄 Partial - AI analyze only, no real PDF text extraction |
+| PDF File Upload | ✅ | ✅ | ✅ Complete for text-based PDF analysis and simple file-only PDF attachments; scanned/image-only PDFs need future OCR |
 | Drag-and-Drop Upload UI | 🔄 | 🔄 | 🔄 Partial |
 | Markdown Rendering | ❌ | ❌ | ❌ Not Started |
 | Note Search | ❌ | ✅ | 🔄 Frontend-only |

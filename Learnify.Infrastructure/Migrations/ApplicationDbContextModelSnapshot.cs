@@ -388,37 +388,6 @@ namespace Learnify.Infrastructure.Migrations
 
                     b.ToTable("Users");
 
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("b135b12a-f7a7-45b7-8de2-1acd495220c6"),
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Email = "fatima@learnify.com",
-                            FullName = "Fatima Akhtar",
-                            IsActive = true,
-                            PasswordHash = "$2a$11$f5NYkhm9RA0scsEEhwlK2OAuozIv2nG4en571KfDQGczKY9W.X8Lq",
-                            Role = "Instructor"
-                        },
-                        new
-                        {
-                            Id = new Guid("04a8e75c-d34a-4505-aacd-115d52ca5b00"),
-                            CreatedAt = new DateTime(2026, 1, 10, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Email = "arif@learnify.com",
-                            FullName = "Arif Hossain",
-                            IsActive = true,
-                            PasswordHash = "$2a$11$nEaM7wvmn2IjWkyvfw3m5eF4UmtNCOjNtB0AfeH1GtKNdLO/y3g3C",
-                            Role = "Student"
-                        },
-                        new
-                        {
-                            Id = new Guid("ab561e92-25f7-4b5c-9349-d19de15b18f8"),
-                            CreatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
-                            Email = "shadman@learnify.com",
-                            FullName = "Shadman Rahman",
-                            IsActive = true,
-                            PasswordHash = "$2a$11$lqLEXMuNVPmeo9sOpXIIfuCuJD0TtVSM65/IrjohLk1blGjblEUZC",
-                            Role = "Admin"
-                        });
                 });
 
             modelBuilder.Entity("Learnify.Core.Entities.UserAiSettings", b =>

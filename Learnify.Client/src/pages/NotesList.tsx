@@ -19,6 +19,14 @@ interface CourseOption {
   title: string;
 }
 
+const FILE_ONLY_PDF_CONTENT =
+  'This PDF was uploaded without text extraction. Use AI Analyze on a text-based PDF or upload .txt/.md content to generate AI study tools.';
+
+const getApiErrorMessage = (error: unknown, fallback: string) => {
+  const apiError = error as { response?: { data?: { message?: string; errors?: string[] } }; message?: string };
+  return apiError.response?.data?.message ?? apiError.response?.data?.errors?.[0] ?? apiError.message ?? fallback;
+};
+
 export default function NotesList() {
   const { isAuthenticated } = useAuthStore();
   const [notes, setNotes] = useState<Note[]>([]);
@@ -29,10 +37,13 @@ export default function NotesList() {
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [creating, setCreating] = useState(false);
   const [uploadingText, setUploadingText] = useState(false);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
   const [createForm, setCreateForm] = useState({ courseId: '', content: '' });
   const [uploadForm, setUploadForm] = useState<{ courseId: string; file: File | null }>({ courseId: '', file: null });
+  const [pdfUploadForm, setPdfUploadForm] = useState<{ courseId: string; file: File | null }>({ courseId: '', file: null });
   const [createError, setCreateError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [pdfUploadError, setPdfUploadError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [courseFilter, setCourseFilter] = useState('All notes');
 
@@ -84,7 +95,9 @@ export default function NotesList() {
   const openUploadModal = async () => {
     setCreateError(null);
     setUploadError(null);
+    setPdfUploadError(null);
     setUploadForm({ courseId: '', file: null });
+    setPdfUploadForm({ courseId: '', file: null });
     setShowUploadModal(true);
 
     try {
@@ -100,7 +113,9 @@ export default function NotesList() {
   const closeUploadModal = () => {
     setShowUploadModal(false);
     setUploadError(null);
+    setPdfUploadError(null);
     setUploadForm({ courseId: '', file: null });
+    setPdfUploadForm({ courseId: '', file: null });
   };
 
   const handleCreateNote = async () => {
@@ -161,10 +176,49 @@ export default function NotesList() {
       setUploadForm({ courseId: '', file: null });
       setShowUploadModal(false);
       await fetchNotes();
-    } catch (uploadErrorResponse: any) {
-      setUploadError(uploadErrorResponse?.response?.data?.message || 'Failed to upload text note.');
+    } catch (uploadErrorResponse: unknown) {
+      setUploadError(getApiErrorMessage(uploadErrorResponse, 'Failed to upload text note.'));
     } finally {
       setUploadingText(false);
+    }
+  };
+
+  const handlePdfUpload = async () => {
+    if (!pdfUploadForm.courseId || !pdfUploadForm.file) {
+      setPdfUploadError('Please select a course and a PDF file.');
+      return;
+    }
+
+    const fileName = pdfUploadForm.file.name.toLowerCase();
+    if (!fileName.endsWith('.pdf')) {
+      setPdfUploadError('Only PDF files are supported for simple file upload.');
+      return;
+    }
+
+    if (pdfUploadForm.file.size > 5 * 1024 * 1024) {
+      setPdfUploadError('File too large. Maximum 5MB.');
+      return;
+    }
+
+    try {
+      setUploadingPdf(true);
+      setPdfUploadError(null);
+
+      const formData = new FormData();
+      formData.append('courseId', pdfUploadForm.courseId);
+      formData.append('file', pdfUploadForm.file);
+
+      await apiClient.post('/api/notes/upload-file', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      setPdfUploadForm({ courseId: '', file: null });
+      setShowUploadModal(false);
+      await fetchNotes();
+    } catch (uploadErrorResponse: unknown) {
+      setPdfUploadError(getApiErrorMessage(uploadErrorResponse, 'Failed to upload PDF.'));
+    } finally {
+      setUploadingPdf(false);
     }
   };
 
@@ -252,7 +306,7 @@ export default function NotesList() {
             </label>
             <div className="ui-card" style={{ borderStyle: 'dashed', textAlign: 'center', minWidth: 260 }}>
               <div className="eyebrow">Upload Dropzone</div>
-              <p className="muted text-small mb-3">Supports .txt and .md. PDF extraction remains partial.</p>
+              <p className="muted text-small mb-3">Supports .txt, .md, text-based PDF analysis, and simple PDF attachments.</p>
               <AppButton type="button" onClick={() => void openUploadModal()}>Choose File</AppButton>
             </div>
           </Card>
@@ -272,13 +326,14 @@ export default function NotesList() {
           ) : (
             <div className="grid grid-2">
               {visibleNotes.map((note) => {
-                const hasAiContent = note.content.trim().length > 0;
+                const isFileOnlyPdf = note.content.trim() === FILE_ONLY_PDF_CONTENT;
+                const hasAiContent = note.content.trim().length > 0 && !isFileOnlyPdf;
                 return (
                   <Link to={`/notes/${note.id}`} key={note.id} style={{ textDecoration: 'none' }}>
                     <Card className="stack">
                       <div className="split">
                         <h2 style={{ fontSize: '1.1rem' }}>{note.title || 'Untitled Note'}</h2>
-                        <Badge tone={hasAiContent ? 'success' : 'muted'}>{hasAiContent ? 'AI Ready' : 'Empty'}</Badge>
+                        <Badge tone={hasAiContent ? 'success' : 'muted'}>{hasAiContent ? 'AI Ready' : isFileOnlyPdf ? 'PDF attached' : 'Empty'}</Badge>
                       </div>
                       <p className="muted text-small">Course: {note.courseTitle || note.courseId}</p>
                       <p className="muted">
@@ -403,6 +458,55 @@ export default function NotesList() {
                     disabled={uploadingText || courses.length === 0}
                   >
                     {uploadingText ? 'Uploading...' : 'Upload Text/Markdown'}
+                  </AppButton>
+                </div>
+              </Card>
+
+              <Card className="stack">
+                <h3>Simple PDF Upload</h3>
+                <p className="muted">Save a PDF to your notes without AI analysis.</p>
+                <p className="muted text-small">AI summary, flashcards, quizzes, and study tips require readable extracted text.</p>
+
+                <div>
+                  <label htmlFor="pdf-upload-course" className="form-label">Course</label>
+                  <select
+                    id="pdf-upload-course"
+                    value={pdfUploadForm.courseId}
+                    onChange={(event) => setPdfUploadForm((current) => ({ ...current, courseId: event.target.value }))}
+                    disabled={courses.length === 0}
+                  >
+                    <option value="">Select a course</option>
+                    {courses.map((course) => (
+                      <option key={course.id} value={course.id}>
+                        {course.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="pdf-upload-file" className="form-label">PDF file</label>
+                  <input
+                    id="pdf-upload-file"
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    onChange={(event) => setPdfUploadForm((current) => ({
+                      ...current,
+                      file: event.target.files?.[0] ?? null,
+                    }))}
+                  />
+                  <p className="muted text-small mt-3">Stores the PDF as an attachment up to 5MB. It does not call AI.</p>
+                </div>
+
+                {pdfUploadError && <ErrorState message={pdfUploadError} />}
+
+                <div className="cluster" style={{ justifyContent: 'flex-end' }}>
+                  <AppButton
+                    type="button"
+                    onClick={() => void handlePdfUpload()}
+                    disabled={uploadingPdf || courses.length === 0}
+                  >
+                    {uploadingPdf ? 'Uploading...' : 'Save PDF Without AI'}
                   </AppButton>
                 </div>
               </Card>

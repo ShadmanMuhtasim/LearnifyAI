@@ -484,6 +484,42 @@ textarea {
 
 textarea {
   resize: vertical;
+  max-height: 42vh;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+input,
+select,
+textarea,
+.ui-card,
+.section-panel,
+.note-content,
+.concept-card,
+.flashcard-surface,
+.alert,
+.modal-panel {
+  min-width: 0;
+}
+
+.ai-output-text,
+.note-content,
+.concept-card,
+.flashcard-surface p,
+.alert {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ai-output-text {
+  display: block;
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+}
+
+.note-content {
+  overflow-wrap: anywhere;
 }
 
 .field-grid {
