@@ -1,4 +1,5 @@
 using Learnify.Application.DTOs.AI;
+using Learnify.Application.Interfaces;
 using Learnify.Application.Settings;
 using Learnify.Core.Interfaces;
 using Learnify.Infrastructure.AI;
@@ -22,6 +23,7 @@ public class AiController : ControllerBase
     private readonly AiSettings _aiSettings;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<AiController> _logger;
+    private readonly IAnalyticsService _analyticsService;
 
     public AiController(
         IAiService aiService,
@@ -29,7 +31,8 @@ public class AiController : ControllerBase
         IUnitOfWork unitOfWork,
         IOptions<AiSettings> aiSettings,
         IHttpClientFactory httpClientFactory,
-        ILogger<AiController> logger)
+        ILogger<AiController> logger,
+        IAnalyticsService analyticsService)
     {
         _aiService = aiService;
         _store = store;
@@ -37,6 +40,7 @@ public class AiController : ControllerBase
         _aiSettings = aiSettings.Value;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _analyticsService = analyticsService;
     }
 
     private Guid GetCurrentUserId()
@@ -50,6 +54,22 @@ public class AiController : ControllerBase
         }
 
         throw new UnauthorizedAccessException("User identity not found in token.");
+    }
+
+    private async Task TrackAsync(
+        string activityType,
+        string? entityType,
+        Guid? entityId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _analyticsService.TrackAsync(GetCurrentUserId(), activityType, entityType, entityId, cancellationToken: cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Analytics tracking failed for {ActivityType}", activityType);
+        }
     }
 
     [HttpGet("provider")]
@@ -257,6 +277,7 @@ public class AiController : ControllerBase
         try
         {
             var summary = await _aiService.SummarizeNoteAsync(request.Content, cancellationToken);
+            await TrackAsync("SummaryGenerated", "Note", Guid.TryParse(request.NoteId, out var noteId) ? noteId : null, cancellationToken);
             return Ok(new SummarizeNoteResponse(request.NoteId, summary, DateTime.UtcNow));
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("Rate limit"))
@@ -297,6 +318,7 @@ public class AiController : ControllerBase
                 flashcards.Select(f => new FlashcardItem(f.Question, f.Answer)).ToList(),
                 DateTime.UtcNow);
 
+            await TrackAsync("FlashcardsGenerated", "Note", Guid.TryParse(request.NoteId, out var noteId) ? noteId : null, cancellationToken);
             return Ok(response);
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("Rate limit"))
@@ -328,6 +350,7 @@ public class AiController : ControllerBase
         try
         {
             var tips = await _aiService.GetStudyTipsAsync(request.Topic, cancellationToken);
+            await TrackAsync("StudyTipsGenerated", null, null, cancellationToken);
             return Ok(new StudyTipsResponse(tips, DateTime.UtcNow));
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("Rate limit"))

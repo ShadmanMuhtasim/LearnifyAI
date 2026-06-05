@@ -27,11 +27,139 @@ public sealed class ControllerIntegrationTests : IClassFixture<LearnifyWebApplic
     [InlineData("/api/ai/provider")]
     [InlineData("/api/user/ai-settings")]
     [InlineData("/api/quizzes")]
+    [InlineData("/api/analytics/dashboard")]
+    [InlineData("/api/analytics/quiz-performance")]
+    [InlineData("/api/analytics/activity")]
+    [InlineData("/api/achievements")]
     public async Task ProtectedEndpoints_Return401WithoutJwt(string path)
     {
         var response = await _client.GetAsync(path);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Analytics_FreshUserStartsWithRealEmptyState()
+    {
+        var token = await RegisterAndGetTokenAsync();
+
+        var dashboard = await GetApiDataAsync<DashboardAnalyticsDto>("/api/analytics/dashboard", token);
+        var performance = await GetApiDataAsync<QuizPerformanceDto>("/api/analytics/quiz-performance", token);
+        var achievements = await GetApiDataAsync<List<AchievementStatusDto>>("/api/achievements", token);
+
+        Assert.Equal(0, dashboard.TotalCourses);
+        Assert.Equal(0, dashboard.TotalNotes);
+        Assert.Equal(0, dashboard.TotalQuizzes);
+        Assert.Equal(0, dashboard.TotalQuizAttempts);
+        Assert.Equal(0, dashboard.TotalXp);
+        Assert.Equal(0, dashboard.CurrentStreak);
+        Assert.Empty(dashboard.RecentActivity);
+        Assert.Equal(0, performance.AttemptsCount);
+        Assert.Equal(0, performance.AverageScore);
+        Assert.All(achievements, achievement => Assert.False(achievement.IsUnlocked));
+    }
+
+    [Fact]
+    public async Task Analytics_TracksLearningActivityAndKeepsUsersIsolated()
+    {
+        var ownerToken = await RegisterAndGetTokenAsync();
+        var otherToken = await RegisterAndGetTokenAsync();
+        var course = await CreateCourseAsync(ownerToken);
+        var note = await CreateNoteAsync(ownerToken, course.Id);
+
+        await PostJsonAsync<SummarizeNoteResponse>(
+            "/api/ai/summarize",
+            new SummarizeNoteRequest(note.Id.ToString(), note.Content),
+            ownerToken);
+
+        var quiz = await PostApiDataAsync<QuizDto>(
+            "/api/quizzes/generate",
+            new GenerateQuizRequest
+            {
+                NoteId = note.Id,
+                NumberOfQuestions = 2,
+                Difficulty = "Easy",
+                QuestionTypes = new List<string> { "MultipleChoice", "TrueFalse" }
+            },
+            ownerToken,
+            HttpStatusCode.Created);
+        var quizDetail = await GetApiDataAsync<QuizDto>($"/api/quizzes/{quiz.Id}?includeAnswers=true", ownerToken);
+        var result = await PostApiDataAsync<QuizResultDto>(
+            $"/api/quizzes/{quiz.Id}/attempts",
+            new SubmitQuizAttemptRequest
+            {
+                Answers = quizDetail.Questions.Select(question => new SubmitQuizAnswerDto
+                {
+                    QuestionId = question.Id,
+                    UserAnswer = question.CorrectAnswer!
+                }).ToList()
+            },
+            ownerToken);
+
+        Assert.Equal(100m, result.Percentage);
+
+        var ownerDashboard = await GetApiDataAsync<DashboardAnalyticsDto>("/api/analytics/dashboard", ownerToken);
+        Assert.Equal(1, ownerDashboard.TotalCourses);
+        Assert.Equal(1, ownerDashboard.TotalNotes);
+        Assert.Equal(1, ownerDashboard.TotalQuizzes);
+        Assert.Equal(1, ownerDashboard.TotalQuizAttempts);
+        Assert.Equal(1, ownerDashboard.TotalSummariesGenerated);
+        Assert.Equal(100m, ownerDashboard.BestQuizScore);
+        Assert.NotEmpty(ownerDashboard.RecentActivity);
+
+        var otherDashboard = await GetApiDataAsync<DashboardAnalyticsDto>("/api/analytics/dashboard", otherToken);
+        Assert.Equal(0, otherDashboard.TotalCourses);
+        Assert.Equal(0, otherDashboard.TotalNotes);
+        Assert.Equal(0, otherDashboard.TotalQuizzes);
+        Assert.Equal(0, otherDashboard.TotalQuizAttempts);
+        Assert.Empty(otherDashboard.RecentActivity);
+    }
+
+    [Fact]
+    public async Task Achievements_UnlockFromRealProgressOnlyOnce()
+    {
+        var token = await RegisterAndGetTokenAsync();
+        var course = await CreateCourseAsync(token);
+        var note = await CreateNoteAsync(token, course.Id);
+        var quiz = await PostApiDataAsync<QuizDto>(
+            "/api/quizzes/generate",
+            new GenerateQuizRequest
+            {
+                NoteId = note.Id,
+                NumberOfQuestions = 2,
+                Difficulty = "Easy",
+                QuestionTypes = new List<string> { "MultipleChoice", "TrueFalse" }
+            },
+            token,
+            HttpStatusCode.Created);
+        var quizDetail = await GetApiDataAsync<QuizDto>($"/api/quizzes/{quiz.Id}?includeAnswers=true", token);
+
+        await PostApiDataAsync<QuizResultDto>(
+            $"/api/quizzes/{quiz.Id}/attempts",
+            new SubmitQuizAttemptRequest
+            {
+                Answers = quizDetail.Questions.Select(question => new SubmitQuizAnswerDto
+                {
+                    QuestionId = question.Id,
+                    UserAnswer = question.CorrectAnswer!
+                }).ToList()
+            },
+            token);
+
+        var achievements = await GetApiDataAsync<List<AchievementStatusDto>>("/api/achievements", token);
+        var unlockedCodes = achievements.Where(achievement => achievement.IsUnlocked)
+            .Select(achievement => achievement.Code)
+            .ToList();
+
+        Assert.Contains("first-course", unlockedCodes);
+        Assert.Contains("first-note", unlockedCodes);
+        Assert.Contains("first-quiz", unlockedCodes);
+        Assert.Contains("perfect-quiz", unlockedCodes);
+
+        var secondRead = await GetApiDataAsync<List<AchievementStatusDto>>("/api/achievements", token);
+        Assert.Equal(
+            unlockedCodes.Count,
+            secondRead.Count(achievement => achievement.IsUnlocked));
     }
 
     [Fact]

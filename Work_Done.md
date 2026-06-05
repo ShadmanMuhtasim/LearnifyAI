@@ -688,6 +688,32 @@ For production: Azure Key Vault or environment variables injected at deployment 
 - `npm test -- --run` in `Learnify.Client` - passed, 9 files / 25 tests.
 - `npm run build` in `Learnify.Client` - passed.
 
+## M9 - Analytics + Achievements
+
+- Added `LearningActivity`, `Achievement`, and `UserAchievement` entities with EF Core configuration, indexes, and static achievement definitions only.
+- Added migration `20260605062203_AddAnalyticsAchievements`.
+- Added analytics API:
+  - `GET /api/analytics/dashboard`
+  - `GET /api/analytics/quiz-performance`
+  - `GET /api/analytics/activity`
+  - `GET /api/achievements`
+- Added `IAnalyticsService` and `AnalyticsService` to compute real per-user dashboard totals, quiz performance, XP, streaks, recent activity, and achievement progress.
+- Added activity tracking for course creation, note upload, simple PDF upload, AI summary, AI flashcards, study tips, quiz generation, and quiz attempt submission.
+- Preserved fresh-user integrity: new users start with 0 courses, 0 notes, 0 quizzes, 0 attempts, 0 XP, empty recent activity, and locked achievements.
+- Updated Dashboard to use `/api/analytics/dashboard` instead of frontend placeholder/fake progress.
+- Added protected `/analytics` and `/achievements` pages and enabled their sidebar links.
+- Kept AI Tutor and Study Planner disabled/future; no Docker, CI/CD, deployment, OCR, adaptive quiz engine, or broad redesign work was added.
+- Added backend integration tests for protected endpoints, fresh-user empty analytics, cross-user isolation, tracked activity, and achievement unlocks.
+- Added frontend tests for Dashboard analytics, Analytics page, Achievements page, and Navbar M9 links.
+
+### Verification - 2026-06-05
+
+- `dotnet build --no-restore` - passed with 0 warnings and 0 errors.
+- `dotnet test --no-restore` - passed, 41 backend tests.
+- `dotnet list package --vulnerable --include-transitive` - passed; no vulnerable packages reported.
+- `npm test -- --run` in `Learnify.Client` - passed, 13 files / 32 tests.
+- `npm run build` in `Learnify.Client` - passed.
+
 ## LocalOpenAI / Qwen Quiz JSON Reliability Follow-up
 
 - Added robust quiz response extraction and schema normalization for local model outputs:
