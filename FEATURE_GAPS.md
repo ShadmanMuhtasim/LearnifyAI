@@ -123,3 +123,5 @@ Latest M7 re-verification on 2026-06-05 passed with Gemini default `gemini-3.5-f
 - Added `/no_think` JSON-only prompting for LocalOpenAI quiz generation while leaving Gemini/Ollama/Mock behavior separate.
 - Automated tests cover 8-question batch merging, empty-content retry, invalid-batch failure, parser robustness, Mock compatibility, existing quiz scoring, and M9 analytics regressions.
 - Remaining caveat: the post-fix live 8-question Qwen runtime smoke still needs confirmation because the local command approval environment hit its usage limit before the runtime model/API smoke could run.
+- Follow-up reliability fix adds a sequential one-question fallback for LocalOpenAI 7- and 8-question quizzes after batch generation cannot fill the requested size. Automated tests cover 7-question fallback, 8-question fallback, duplicate skipping, and max-attempt failure.
+- Remaining caveat: live 7/8-question Qwen runtime smoke still needs confirmation because `http://127.0.0.1:8080/v1/models` was unreachable during the latest verification pass.

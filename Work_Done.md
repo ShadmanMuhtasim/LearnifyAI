@@ -713,3 +713,22 @@ For production: Azure Key Vault or environment variables injected at deployment 
 - `npm test -- --run` in `Learnify.Client` - passed, 9 files / 25 tests.
 - `npm run build` in `Learnify.Client` - passed.
 - LocalOpenAI 3/5/8-question live runtime smoke after batching was not completed in this pass because the command approval environment hit its usage limit before the model probe/API smoke could run.
+
+## LocalOpenAI / Qwen 7-8 Question Quiz Reliability Follow-up
+
+- Added a stronger LocalOpenAI-only fallback for larger quizzes when 4-question batches and 2-question retry batches cannot fill the requested quiz size.
+- The fallback generates exactly one question per sequential LocalOpenAI request, parses each response with `QuizResponseParser`, skips duplicate question text, rotates compact note excerpts across attempts, and continues until the requested count is reached or the attempt limit is exhausted.
+- The fallback keeps `/no_think`, compact JSON-only prompting, low temperature, small output budgets, and the existing strict validation rules.
+- The existing clear failure remains in place if local generation cannot produce enough valid unique questions: `The local model could not generate the requested quiz size. Try fewer questions or switch provider.`
+- Gemini, Ollama, Mock, quiz scoring, and M9 analytics behavior were not changed.
+
+### Verification
+
+- `dotnet build --no-restore` - passed with 0 warnings and 0 errors.
+- `dotnet test --no-restore` - passed, 48 backend tests.
+- `dotnet list package --vulnerable --include-transitive` - passed; no vulnerable packages reported.
+- `npm test -- --run` in `Learnify.Client` - passed, 9 files / 25 tests.
+- `npm run build` in `Learnify.Client` - passed.
+- `git diff --check` - passed; only CRLF conversion warnings were printed.
+- Conflict marker scan - no markers found.
+- LocalOpenAI live runtime smoke was blocked because `http://127.0.0.1:8080/v1/models` was unreachable in this pass.
