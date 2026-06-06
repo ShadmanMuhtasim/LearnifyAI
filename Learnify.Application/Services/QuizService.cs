@@ -62,6 +62,11 @@ public class QuizService : IQuizService
             throw new InvalidOperationException("AI did not return any valid quiz questions.");
         }
 
+        if (validQuestions.Count < numberOfQuestions)
+        {
+            throw new InvalidOperationException("The AI provider could not generate the requested quiz size. Try fewer questions or switch provider.");
+        }
+
         var quiz = new Quiz
         {
             Id = Guid.NewGuid(),

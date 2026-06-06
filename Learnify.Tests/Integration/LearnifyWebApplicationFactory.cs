@@ -17,6 +17,7 @@ public sealed class LearnifyWebApplicationFactory : WebApplicationFactory<global
 {
     private readonly string _databaseName = $"learnify-tests-{Guid.NewGuid()}";
     private int _analyzeDocumentCallCount;
+    private Exception? _nextAiException;
 
     public int AnalyzeDocumentCallCount => _analyzeDocumentCallCount;
 
@@ -24,6 +25,14 @@ public sealed class LearnifyWebApplicationFactory : WebApplicationFactory<global
     {
         _analyzeDocumentCallCount = 0;
     }
+
+    public void FailNextAiCall(Exception exception)
+    {
+        _nextAiException = exception;
+    }
+
+    private Exception? ConsumeNextAiException()
+        => Interlocked.Exchange(ref _nextAiException, null);
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -76,13 +85,25 @@ public sealed class LearnifyWebApplicationFactory : WebApplicationFactory<global
         }
 
         public Task<string> SummarizeNoteAsync(string content, CancellationToken ct = default)
-            => Task.FromResult("Mocked integration summary.");
+        {
+            if (_factory.ConsumeNextAiException() is { } exception)
+            {
+                throw exception;
+            }
+
+            return Task.FromResult("Mocked integration summary.");
+        }
 
         public Task<IReadOnlyList<FlashcardResult>> GenerateFlashcardsAsync(
             string content,
             int count = 5,
             CancellationToken ct = default)
         {
+            if (_factory.ConsumeNextAiException() is { } exception)
+            {
+                throw exception;
+            }
+
             IReadOnlyList<FlashcardResult> cards = Enumerable.Range(1, Math.Max(1, count))
                 .Select(i => new FlashcardResult($"Question {i}?", $"Answer {i}"))
                 .ToList();
@@ -96,6 +117,11 @@ public sealed class LearnifyWebApplicationFactory : WebApplicationFactory<global
             int numberOfQuestions,
             CancellationToken ct = default)
         {
+            if (_factory.ConsumeNextAiException() is { } exception)
+            {
+                throw exception;
+            }
+
             var requestedTypes = questionTypes.Count == 0
                 ? new[] { "MultipleChoice" }
                 : questionTypes;
@@ -131,13 +157,25 @@ public sealed class LearnifyWebApplicationFactory : WebApplicationFactory<global
         }
 
         public Task<string> GetStudyTipsAsync(string topic, CancellationToken ct = default)
-            => Task.FromResult("Mocked study tips.");
+        {
+            if (_factory.ConsumeNextAiException() is { } exception)
+            {
+                throw exception;
+            }
+
+            return Task.FromResult("Mocked study tips.");
+        }
 
         public Task<NoteAnalysisResult> AnalyzeDocumentAsync(
             string content,
             string fileName,
             CancellationToken ct = default)
         {
+            if (_factory.ConsumeNextAiException() is { } exception)
+            {
+                throw exception;
+            }
+
             Interlocked.Increment(ref _factory._analyzeDocumentCallCount);
 
             return Task.FromResult(new NoteAnalysisResult

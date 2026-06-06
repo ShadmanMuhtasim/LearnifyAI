@@ -387,6 +387,12 @@ Local provider protocols are separate:
 - `LocalOpenAI / llama.cpp` uses OpenAI-compatible `/v1/models` and `/v1/chat/completions`.
 - Example local base URL: `http://127.0.0.1:8080`.
 
+Cloud providers no longer fall back to mock output when their API key is missing. Configure Gemini through user secrets, environment variables, or the Settings page; otherwise AI calls return a clear configuration error. Gemini remains configured for `gemini-3.5-flash` by default.
+
+Dedicated AI tools can extract source text from `.txt`, `.md`, selectable-text `.pdf`, and `.docx` uploads through `POST /api/materials/extract-text`. Extracted text is sent to the selected AI provider; raw PDF/DOCX bytes are not sent to AI. Scanned/image-only PDFs require future OCR support.
+
+Gemini quota or provider rate-limit errors return `AI_RATE_LIMIT` with a clear visible message. Retry later, switch provider, or use a local/free provider mode if available.
+
 > ⚠️ **Never commit API keys to source control.** Use `dotnet user-secrets` locally and Azure Key Vault / environment variables in production.
 
 ---

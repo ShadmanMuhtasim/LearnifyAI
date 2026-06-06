@@ -139,3 +139,25 @@ Latest M7 re-verification on 2026-06-05 passed with Gemini default `gemini-3.5-f
 | Automated tests | Complete | Backend tests pass 54 total; frontend tests pass 31 total after M10 additions. |
 
 Future planner gaps remain: drag-and-drop calendar, recurring tasks, notifications/reminders, AI-generated plan optimization, time-spent tracking, and Pomodoro/focus mode.
+
+## AI Provider Runtime Stabilization Status
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Gemini configuration errors | Complete | Missing Gemini keys now return a clear configuration error instead of silently falling back to mock output. |
+| Gemini HTTP/runtime errors | Complete | Auth, model/endpoint, quota/rate-limit, invalid JSON, empty text, and unknown response-shape failures now surface clear provider messages with safe metadata logging. |
+| Gemini larger quiz requests | Complete for standard batching | Requests above 5 questions are batched for non-local providers and must satisfy the requested quiz size before persistence. |
+| LocalOpenAI protocol separation | Complete | LocalOpenAI remains on `/v1/chat/completions`; Ollama remains on `/api/*`. |
+| Undersized quiz persistence | Complete | AI quiz generation no longer saves partial quizzes when fewer valid questions are returned than requested. |
+| Live provider smoke | Pending environment | Gemini requires a valid key/quota; LocalOpenAI smoke depends on `http://127.0.0.1:8080/v1/models` being reachable. |
+
+## Dedicated AI Tools Upload + Rate-Limit Status
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Dedicated AI tools upload/source support | Complete | Flashcard Generator, Note Summarizer, and Study Tips support paste text, saved notes, and uploads for `.txt`, `.md`, selectable-text `.pdf`, and `.docx`. |
+| Materials text extraction endpoint | Complete | `POST /api/materials/extract-text` requires JWT, extracts text only, stores nothing, and does not call AI. |
+| Gemini rate-limit UI behavior | Complete | Backend returns HTTP 429 with `AI_RATE_LIMIT` and the visible message tells the user to retry later or switch provider/local mode. |
+| Gemini config missing behavior | Complete | Missing Gemini API key returns HTTP 400 with `AI_CONFIG_MISSING`. |
+| Scanned/image-only PDFs | Future work | OCR remains unsupported; users receive the readable-text 400 message. |
+| Gemini quota availability | External caveat | Code can classify quota exhaustion clearly, but it cannot bypass Google Gemini account/project quota. |

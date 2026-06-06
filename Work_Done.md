@@ -764,3 +764,47 @@ For production: Azure Key Vault or environment variables injected at deployment 
 - Runtime smoke passed through local API on `http://localhost:5073`: fresh user planner returned zero counts/items, note-based suggestions appeared, course/note-linked planner item create/list/update/complete/delete persisted, and User B could not see or complete User A's planner item.
 - Frontend route smoke passed through Vite: `GET http://127.0.0.1:5173/study-planner` returned 200 with the SPA root.
 - Remaining planner gaps: drag-and-drop calendar, recurring tasks, notifications/reminders, AI-generated plan optimization, time-spent tracking, and Pomodoro/focus mode.
+
+## AI Provider Runtime 502 Stabilization - 2026-06-06
+
+- Hardened Gemini runtime handling so HTTP failures, auth/config errors, quota/rate-limit responses, empty candidate text, invalid JSON, and unknown response shapes return clear user-facing errors instead of generic 502s or silent empty content.
+- Missing Gemini keys now fail clearly with: `Gemini API key is not configured. Add it in user secrets or Settings.`
+- Removed silent cloud-provider fallback to `MockAiProvider` when Gemini/OpenAI/Claude keys are missing; mock remains available only when explicitly selected.
+- Kept Gemini default model as `gemini-3.5-flash`; kept Ollama `/api/*` and LocalOpenAI `/v1/chat/completions` paths separate.
+- Added standard non-local quiz batching for requests above 5 questions so Gemini-style providers can fulfill larger requested quiz sizes instead of saving partial quizzes.
+- Made quiz persistence reject undersized AI quiz output with a clear `try fewer questions or switch provider` message.
+- Removed full study-tip topic/note content from controller logs; logs now record topic length only.
+- Added/updated automated coverage for Gemini protocol errors/parsing, fenced flashcard JSON parsing, non-local quiz batching, and strict undersized quiz rejection.
+
+### Verification - 2026-06-06
+
+- `dotnet build --no-restore` - passed with 0 warnings and 0 errors after stopping a stale local `Learnify.Web` process that was locking build DLLs.
+- `dotnet test --no-restore` - passed, 62 backend tests.
+- `dotnet list package --vulnerable --include-transitive` - passed; no vulnerable packages reported.
+- `npm test -- --run` in `Learnify.Client` - passed, 12 files / 31 tests.
+- `npm run build` in `Learnify.Client` - passed.
+- Runtime provider smoke still needs final live confirmation for Gemini key/quota and LocalOpenAI server availability.
+
+## AI Provider Error Classification + Dedicated AI Tools Upload Support - 2026-06-06
+
+- Root cause: Gemini/provider failures were surfaced as generic HTTP failures in several UI paths because provider errors were plain exceptions without stable error codes/status mapping.
+- Added structured AI error classification for AI endpoints:
+  - `AI_RATE_LIMIT` returns HTTP 429 with a clear Gemini quota/rate-limit message.
+  - `AI_CONFIG_MISSING` returns HTTP 400 for missing provider keys.
+  - `AI_PROVIDER_UNAVAILABLE` returns HTTP 502 for other safe upstream failures.
+- Added reusable authenticated extraction endpoint `POST /api/materials/extract-text`.
+- Added reusable document extraction service for `.txt`, `.md`, selectable-text `.pdf`, and `.docx`; extraction does not call AI, does not save files, and does not send raw PDF/DOCX bytes to providers.
+- Added DOCX plain-text extraction via safe ZIP/XML parsing of `word/document.xml`.
+- Added `StudyMaterialSourceSelector` to the dedicated Flashcard Generator, Note Summarizer, and Study Tips tools with paste text, saved note selection, and upload extraction.
+- Preserved Note Detail AI actions, simple PDF upload, analyzed PDF upload, Study Planner, LocalOpenAI/Ollama separation, and Gemini default `gemini-3.5-flash`.
+
+### Verification - 2026-06-06
+
+- `dotnet restore` - passed.
+- `dotnet build --no-restore` - passed with 0 warnings and 0 errors.
+- `dotnet test --no-restore` - passed, 72 backend tests.
+- `dotnet list package --vulnerable --include-transitive` - passed; no vulnerable packages reported.
+- `npm test -- --run` in `Learnify.Client` - passed, 13 files / 36 tests.
+- `npm run build` in `Learnify.Client` - passed.
+- Runtime smoke: backend started on `http://localhost:5073`; frontend started on `http://127.0.0.1:5173`; extraction passed for `.txt`, `.md`, text-based `.pdf`, and `.docx`; invalid PDF returned the required readable-text 400; saved notes were available; Gemini summary, flashcards, and study tips returned non-empty results; `/flashcards`, `/study-planner`, `/analytics`, and `/achievements` returned 200 from Vite.
+- Caveats: actual Gemini quota cannot be bypassed by code; scanned/image-only PDFs remain unsupported.

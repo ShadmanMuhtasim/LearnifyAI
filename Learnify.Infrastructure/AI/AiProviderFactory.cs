@@ -75,15 +75,19 @@ public class AiProviderFactory : IAiService
 
         _logger.LogInformation("AI provider resolved to '{Provider}' for user {UserId}", config.Provider, userId);
 
-        // If provider needs a key but none is configured, fall back to Mock
         var providerName = config.Provider.ToLowerInvariant();
         var needsKey = providerName is "gemini" or "openai" or "claude";
         if (needsKey && string.IsNullOrWhiteSpace(config.ApiKey))
         {
             _logger.LogWarning(
-                "Provider '{Provider}' has no API key. Falling back to MockAiProvider.",
+                "Provider '{Provider}' has no API key configured.",
                 config.Provider);
-            return (new MockAiProvider(), new UserAiSettingsStore.ProviderConfig("Mock", string.Empty, "mock", string.Empty));
+            throw new AiProviderException(
+                "AI_CONFIG_MISSING",
+                config.Provider,
+                GetMissingApiKeyMessage(config.Provider),
+                "",
+                400);
         }
 
         IAiProvider provider = config.Provider.ToLowerInvariant() switch
@@ -319,6 +323,20 @@ public class AiProviderFactory : IAiService
                 ct);
         }
 
+        if (!isLocalOpenAi && requestedCount > 5)
+        {
+            return await StandardQuizBatchGenerator.GenerateAsync(
+                provider,
+                provider.ProviderName,
+                providerConfig.Model,
+                content,
+                normalizedTypes,
+                normalizedDifficulty,
+                requestedCount,
+                _logger,
+                ct);
+        }
+
         var prompt = isLocalOpenAi
             ? BuildLocalOpenAiQuizPrompt(content, normalizedTypes, normalizedDifficulty, requestedCount)
             : BuildStandardQuizPrompt(content, normalizedTypes, normalizedDifficulty, requestedCount);
@@ -327,7 +345,35 @@ public class AiProviderFactory : IAiService
         var response = await provider.CompleteAsync(prompt, options, ct);
         try
         {
-            return ParseQuiz(response);
+            var parsed = ParseQuiz(response);
+            if (parsed.Questions.Count >= requestedCount)
+            {
+                parsed.Questions = parsed.Questions.Take(requestedCount).ToList();
+                return parsed;
+            }
+
+            _logger.LogWarning(
+                "AI quiz response produced fewer questions than requested. Provider={Provider}, Model={Model}, Requested={Requested}, Parsed={Parsed}",
+                provider.ProviderName,
+                providerConfig.Model,
+                requestedCount,
+                parsed.Questions.Count);
+
+            if (!isLocalOpenAi)
+            {
+                return await StandardQuizBatchGenerator.GenerateAsync(
+                    provider,
+                    provider.ProviderName,
+                    providerConfig.Model,
+                    content,
+                    normalizedTypes,
+                    normalizedDifficulty,
+                    requestedCount,
+                    _logger,
+                    ct);
+            }
+
+            throw new InvalidOperationException("The local model could not generate the requested quiz size. Try fewer questions or switch provider.");
         }
         catch (AiQuizFormatException ex)
         {
@@ -341,6 +387,16 @@ public class AiProviderFactory : IAiService
                 ex.OutputPreview);
             throw;
         }
+    }
+
+    private static string GetMissingApiKeyMessage(string provider)
+    {
+        if (provider.Equals("Gemini", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Gemini API key is not configured. Add it in user secrets or Settings.";
+        }
+
+        return $"{provider} API key is not configured. Add it in Settings.";
     }
 
     private static string BuildStandardQuizPrompt(
@@ -436,7 +492,7 @@ public class AiProviderFactory : IAiService
         return ParseAnalysisResult(response, content);
     }
 
-    private static List<FlashcardResult> ParseFlashcards(string response)
+    internal static List<FlashcardResult> ParseFlashcards(string response)
     {
         var clean = CleanJsonResponse(response);
 

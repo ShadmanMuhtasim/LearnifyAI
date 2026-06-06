@@ -28,6 +28,7 @@ public static class DependencyInjection
         services.AddScoped<IAiProvider, LocalOpenAiProvider>();
         services.AddScoped<IAiProvider, ClaudeAiProvider>();
         services.AddScoped<IPdfTextExtractor, PdfTextExtractor>();
+        services.AddScoped<IDocumentTextExtractor, DocumentTextExtractor>();
 
         // Register the factory (which also implements IAiService)
         services.AddSingleton<UserAiSettingsStore>();

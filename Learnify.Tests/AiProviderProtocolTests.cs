@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Http.Headers;
+using Learnify.Application.Settings;
 using Learnify.Core.Models;
+using Learnify.Infrastructure.AI;
 using Learnify.Infrastructure.AI.Providers;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -9,6 +12,105 @@ namespace Learnify.Tests;
 
 public class AiProviderProtocolTests
 {
+    [Fact]
+    public async Task GeminiProvider_MissingApiKeyThrowsClearConfigurationError()
+    {
+        var provider = new GeminiAiProvider(
+            new StaticHttpClientFactory(new HttpClient()),
+            Options.Create(new AiSettings { Gemini = new AiSettings.GeminiSettings { ApiKey = "", Model = "gemini-3.5-flash" } }),
+            NullLogger<GeminiAiProvider>.Instance);
+
+        var ex = await Assert.ThrowsAsync<AiProviderException>(() =>
+            provider.CompleteAsync("Prompt", new AiRequestOptions(), CancellationToken.None));
+
+        Assert.Equal("AI_CONFIG_MISSING", ex.Code);
+        Assert.Equal(400, ex.StatusCode);
+        Assert.Contains("Gemini API key is not configured", ex.Message);
+        Assert.Contains("user secrets or Settings", ex.Message);
+    }
+
+    [Fact]
+    public async Task GeminiProvider_PostsGenerateContentAndParsesPlainText()
+    {
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("""
+            {"candidates":[{"content":{"parts":[{"text":"plain summary"}]}}]}
+            """)
+        });
+        var provider = new GeminiAiProvider(
+            new StaticHttpClientFactory(new HttpClient(handler)),
+            Options.Create(new AiSettings { Gemini = new AiSettings.GeminiSettings { ApiKey = "gemini-key", Model = "gemini-3.5-flash" } }),
+            NullLogger<GeminiAiProvider>.Instance);
+
+        var result = await provider.CompleteAsync("Summarize this.", new AiRequestOptions(0.2, 123), CancellationToken.None);
+
+        Assert.Equal("plain summary", result);
+        Assert.Contains("/v1beta/models/gemini-3.5-flash:generateContent", handler.RequestPath);
+        Assert.Contains("key=gemini-key", handler.RequestQuery);
+        Assert.Contains("maxOutputTokens", handler.RequestBody);
+    }
+
+    [Fact]
+    public async Task GeminiProvider_HttpErrorIncludesSafeProviderReason()
+    {
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound)
+        {
+            Content = new StringContent("""{"error":{"message":"models/gemini-3.5-flash is not found for API version v1beta"}}""")
+        });
+        var provider = new GeminiAiProvider(
+            new StaticHttpClientFactory(new HttpClient(handler)),
+            Options.Create(new AiSettings { Gemini = new AiSettings.GeminiSettings { ApiKey = "gemini-key", Model = "gemini-3.5-flash" } }),
+            NullLogger<GeminiAiProvider>.Instance);
+
+        var ex = await Assert.ThrowsAsync<AiProviderException>(() =>
+            provider.CompleteAsync("Prompt", new AiRequestOptions(), CancellationToken.None));
+
+        Assert.Equal("AI_PROVIDER_UNAVAILABLE", ex.Code);
+        Assert.Equal(502, ex.StatusCode);
+        Assert.Contains("Gemini provider model or endpoint was not found", ex.Message);
+        Assert.Contains("Check AI provider settings", ex.Message);
+    }
+
+    [Fact]
+    public async Task GeminiProvider_EmptyCandidateTextThrowsClearProviderError()
+    {
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("""{"candidates":[{"finishReason":"MAX_TOKENS","content":{"parts":[{"text":""}]}}]}""")
+        });
+        var provider = new GeminiAiProvider(
+            new StaticHttpClientFactory(new HttpClient(handler)),
+            Options.Create(new AiSettings { Gemini = new AiSettings.GeminiSettings { ApiKey = "gemini-key", Model = "gemini-3.5-flash" } }),
+            NullLogger<GeminiAiProvider>.Instance);
+
+        var ex = await Assert.ThrowsAsync<AiProviderException>(() =>
+            provider.CompleteAsync("Prompt", new AiRequestOptions(), CancellationToken.None));
+
+        Assert.Equal("AI_PROVIDER_UNAVAILABLE", ex.Code);
+        Assert.Equal(502, ex.StatusCode);
+        Assert.Contains("Gemini provider returned no text", ex.Message);
+        Assert.Contains("MAX_TOKENS", ex.Message);
+    }
+
+    [Fact]
+    public void FlashcardParser_AcceptsFencedJsonWithLeadingText()
+    {
+        var flashcards = AiProviderFactory.ParseFlashcards("""
+        Here are the cards:
+        ```json
+        [
+          { "question": "What is a stack?", "answer": "A LIFO data structure." },
+          { "term": "Queue", "definition": "A FIFO data structure." }
+        ]
+        ```
+        """);
+
+        Assert.Equal(2, flashcards.Count);
+        Assert.Equal("What is a stack?", flashcards[0].Question);
+        Assert.Equal("A FIFO data structure.", flashcards[1].Answer);
+    }
+
     [Fact]
     public async Task LocalOpenAiProvider_PostsToChatCompletionsAndParsesContent()
     {
@@ -148,6 +250,7 @@ public class AiProviderProtocolTests
         }
 
         public string RequestPath { get; private set; } = "";
+        public string RequestQuery { get; private set; } = "";
         public string RequestBody { get; private set; } = "";
         public AuthenticationHeaderValue? Authorization { get; private set; }
 
@@ -156,6 +259,7 @@ public class AiProviderProtocolTests
             CancellationToken cancellationToken)
         {
             RequestPath = request.RequestUri?.AbsolutePath ?? "";
+            RequestQuery = request.RequestUri?.Query ?? "";
             Authorization = request.Headers.Authorization;
             RequestBody = request.Content == null
                 ? ""
@@ -163,5 +267,17 @@ public class AiProviderProtocolTests
 
             return _respond(request);
         }
+    }
+
+    private sealed class StaticHttpClientFactory : IHttpClientFactory
+    {
+        private readonly HttpClient _httpClient;
+
+        public StaticHttpClientFactory(HttpClient httpClient)
+        {
+            _httpClient = httpClient;
+        }
+
+        public HttpClient CreateClient(string name) => _httpClient;
     }
 }

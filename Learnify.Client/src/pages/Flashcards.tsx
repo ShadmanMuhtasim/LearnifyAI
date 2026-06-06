@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { generateFlashcards, getStudyTips, summarizeNote, type FlashcardItem } from '../services/aiService';
 import { toast } from 'react-hot-toast';
 import AiProviderSettings from '../components/AI/AiProviderSettings';
+import StudyMaterialSourceSelector from '../components/AI/StudyMaterialSourceSelector';
 import { AppButton, Badge, Card, PageHeader } from '../components/UI/Primitives';
 
 interface LocalFlashcard {
@@ -29,6 +30,7 @@ export default function Flashcards() {
   const [isSummarizing, setIsSummarizing] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [tipsTopic, setTipsTopic] = useState('');
+  const [tipsSourceText, setTipsSourceText] = useState('');
   const [studyTips, setStudyTips] = useState('');
   const [isGeneratingTips, setIsGeneratingTips] = useState(false);
   const [tipsError, setTipsError] = useState<string | null>(null);
@@ -88,15 +90,16 @@ export default function Flashcards() {
   };
 
   const handleGenerateTips = async () => {
-    if (!tipsTopic.trim()) {
-      toast.error('Please enter a topic');
+    const source = tipsSourceText.trim() || tipsTopic.trim();
+    if (!source) {
+      toast.error('Please enter a topic or provide study material');
       return;
     }
 
     setIsGeneratingTips(true);
     setTipsError(null);
     try {
-      const result = await getStudyTips({ topic: tipsTopic });
+      const result = await getStudyTips({ topic: source });
       setStudyTips(result.tips);
       toast.success('Study tips generated successfully!');
     } catch (error: unknown) {
@@ -166,16 +169,15 @@ export default function Flashcards() {
                 placeholder="e.g., Introduction to React"
               />
             </label>
-            <label>
-              <span className="form-label">Lesson Content</span>
-              <textarea
-                value={flashcardContent}
-                onChange={(event) => setFlashcardContent(event.target.value)}
-                placeholder="Paste your lesson notes, textbook content, or any study material here..."
-                rows={10}
-              />
-            </label>
-            <AppButton type="button" onClick={() => void handleGenerateFlashcards()} disabled={isGenerating}>
+            <StudyMaterialSourceSelector
+              label="Lesson Content"
+              value={flashcardContent}
+              onChange={setFlashcardContent}
+              placeholder="Paste your lesson notes, textbook content, or any study material here..."
+              rows={10}
+              disabled={isGenerating}
+            />
+            <AppButton type="button" onClick={() => void handleGenerateFlashcards()} disabled={isGenerating || !flashcardContent.trim()}>
               {isGenerating ? 'Generating...' : 'Generate Flashcards'}
             </AppButton>
             {flashcardError && <div className="alert alert-danger">{flashcardError}</div>}
@@ -222,16 +224,15 @@ export default function Flashcards() {
         <div className="grid grid-2">
           <Card className="stack">
             <h2>Summarize Your Notes</h2>
-            <label>
-              <span className="form-label">Your Notes</span>
-              <textarea
-                value={notesText}
-                onChange={(event) => setNotesText(event.target.value)}
-                placeholder="Paste your raw notes here..."
-                rows={10}
-              />
-            </label>
-            <AppButton type="button" onClick={() => void handleSummarizeNotes()} disabled={isSummarizing}>
+            <StudyMaterialSourceSelector
+              label="Your Notes"
+              value={notesText}
+              onChange={setNotesText}
+              placeholder="Paste your raw notes here..."
+              rows={10}
+              disabled={isSummarizing}
+            />
+            <AppButton type="button" onClick={() => void handleSummarizeNotes()} disabled={isSummarizing || !notesText.trim()}>
               {isSummarizing ? 'Summarizing...' : 'Summarize Notes'}
             </AppButton>
           </Card>
@@ -256,7 +257,15 @@ export default function Flashcards() {
                 placeholder="e.g., Machine Learning, World War II, Organic Chemistry"
               />
             </label>
-            <AppButton type="button" onClick={() => void handleGenerateTips()} disabled={isGeneratingTips}>
+            <StudyMaterialSourceSelector
+              label="Study material"
+              value={tipsSourceText}
+              onChange={setTipsSourceText}
+              placeholder="Paste source material for content-specific study tips..."
+              rows={8}
+              disabled={isGeneratingTips}
+            />
+            <AppButton type="button" onClick={() => void handleGenerateTips()} disabled={isGeneratingTips || (!tipsTopic.trim() && !tipsSourceText.trim())}>
               {isGeneratingTips ? 'Generating...' : 'Get Study Tips'}
             </AppButton>
           </Card>

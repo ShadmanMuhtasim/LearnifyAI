@@ -42,19 +42,20 @@ public class QuizzesController : ControllerBase
             ex.Message.Contains("LocalOpenAI response did not include", StringComparison.OrdinalIgnoreCase) ||
             ex.Message.Contains("choices[0].message.content", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.LogWarning(ex, "LocalOpenAI returned empty quiz content.");
-            return StatusCode(
-                502,
-                ApiResponse<QuizDto>.BadRequest("The local model did not return usable quiz content. Try fewer questions or switch provider."));
+            return AiErrorResponse.FromException(
+                this,
+                new InvalidOperationException("The local model did not return usable quiz content. Try fewer questions or switch provider.", ex),
+                _logger,
+                "quiz-generate",
+                "LocalOpenAI");
         }
         catch (InvalidOperationException ex)
         {
-            return BadRequest(ApiResponse<QuizDto>.BadRequest(ex.Message));
+            return AiErrorResponse.FromException(this, ex, _logger, "quiz-generate");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error generating quiz.");
-            return StatusCode(502, ApiResponse<QuizDto>.BadRequest("AI provider failed while generating the quiz. Check the active provider settings and try again."));
+            return AiErrorResponse.FromException(this, ex, _logger, "quiz-generate");
         }
     }
 

@@ -259,19 +259,13 @@ public class AiController : ControllerBase
             var summary = await _aiService.SummarizeNoteAsync(request.Content, cancellationToken);
             return Ok(new SummarizeNoteResponse(request.NoteId, summary, DateTime.UtcNow));
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("Rate limit"))
-        {
-            return StatusCode(429, new { success = false, message = ex.Message });
-        }
         catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "AI provider failed while summarizing note '{NoteId}'", request.NoteId);
-            return StatusCode(502, new { success = false, message = ex.Message });
+            return AiErrorResponse.FromException(this, ex, _logger, "summarize");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error summarizing note '{NoteId}'", request.NoteId);
-            return StatusCode(502, new { success = false, message = "AI provider failed while summarizing this note. Check the active provider settings and try again." });
+            return AiErrorResponse.FromException(this, ex, _logger, "summarize");
         }
     }
 
@@ -299,19 +293,13 @@ public class AiController : ControllerBase
 
             return Ok(response);
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("Rate limit"))
-        {
-            return StatusCode(429, new { success = false, message = ex.Message });
-        }
         catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "AI provider failed while generating flashcards for note '{NoteId}'", request.NoteId);
-            return StatusCode(502, new { success = false, message = ex.Message });
+            return AiErrorResponse.FromException(this, ex, _logger, "flashcards");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error generating flashcards for note '{NoteId}'", request.NoteId);
-            return StatusCode(502, new { success = false, message = "AI provider failed while generating flashcards. Check the active provider settings and try again." });
+            return AiErrorResponse.FromException(this, ex, _logger, "flashcards");
         }
     }
 
@@ -330,19 +318,13 @@ public class AiController : ControllerBase
             var tips = await _aiService.GetStudyTipsAsync(request.Topic, cancellationToken);
             return Ok(new StudyTipsResponse(tips, DateTime.UtcNow));
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("Rate limit"))
-        {
-            return StatusCode(429, new { success = false, message = ex.Message });
-        }
         catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "AI provider failed while generating study tips for topic '{Topic}'", request.Topic);
-            return StatusCode(502, new { success = false, message = ex.Message });
+            return AiErrorResponse.FromException(this, ex, _logger, "study-tips");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error generating study tips for topic '{Topic}'", request.Topic);
-            return StatusCode(502, new { success = false, message = "AI provider failed while generating study tips. Check the active provider settings and try again." });
+            return AiErrorResponse.FromException(this, ex, _logger, "study-tips");
         }
     }
 

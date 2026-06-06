@@ -96,7 +96,7 @@ public class QuizServiceTests
     }
 
     [Fact]
-    public async Task GenerateQuiz_PersistsTimerAndRejectsMalformedAiQuestions()
+    public async Task GenerateQuiz_PersistsTimerAndFiltersMalformedExtraQuestions()
     {
         var userId = Guid.NewGuid();
         var noteId = Guid.NewGuid();
@@ -143,7 +143,7 @@ public class QuizServiceTests
         {
             NoteId = noteId,
             Difficulty = "Hard",
-            NumberOfQuestions = 2,
+            NumberOfQuestions = 1,
             QuestionTypes = new List<string> { "FillInTheBlank" },
             TimeLimitMinutes = 500
         });
@@ -154,6 +154,58 @@ public class QuizServiceTests
         Assert.Single(dto.Questions);
         Assert.Equal("FillInTheBlank", dto.Questions[0].Type);
         Assert.Equal("proton", dto.Questions[0].CorrectAnswer);
+    }
+
+    [Fact]
+    public async Task GenerateQuiz_ThrowsWhenAiReturnsFewerValidQuestionsThanRequested()
+    {
+        var userId = Guid.NewGuid();
+        var noteId = Guid.NewGuid();
+        var courseId = Guid.NewGuid();
+        var addedQuiz = false;
+
+        var notes = new FakeNoteRepository(new Note { Id = noteId, CourseId = courseId, Content = "Cellular respiration content." });
+        var courses = new FakeCourseRepository(new Course { Id = courseId, UserId = userId, Title = "Biology" });
+        var quizzes = new FakeQuizRepository
+        {
+            OnAdd = _ => addedQuiz = true
+        };
+        var ai = new FakeAiService
+        {
+            QuizResult = new GeneratedQuizResult
+            {
+                Title = "Generated",
+                Questions = new List<GeneratedQuizQuestionResult>
+                {
+                    new()
+                    {
+                        Type = "MultipleChoice",
+                        QuestionText = "What powers ATP synthase?",
+                        Options = new List<string> { "Proton gradient", "Glucose", "Oxygen", "Carbon dioxide" },
+                        CorrectAnswer = "Proton gradient",
+                        Explanation = "A proton gradient powers ATP synthase."
+                    }
+                }
+            }
+        };
+
+        var unitOfWork = BuildUnitOfWork(
+            notes: notes,
+            courses: courses,
+            quizzes: quizzes);
+        var service = new QuizService(unitOfWork, ai);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.GenerateQuizAsync(userId, new GenerateQuizRequest
+            {
+                NoteId = noteId,
+                Difficulty = "Hard",
+                NumberOfQuestions = 2,
+                QuestionTypes = new List<string> { "MultipleChoice" }
+            }));
+
+        Assert.Contains("requested quiz size", ex.Message);
+        Assert.False(addedQuiz);
     }
 
     [Fact]

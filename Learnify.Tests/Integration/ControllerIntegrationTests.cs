@@ -5,6 +5,7 @@ using System.Text.Json;
 using Learnify.Application;
 using Learnify.Application.DTOs;
 using Learnify.Application.DTOs.AI;
+using Learnify.Core.Models;
 using Learnify.Web.Controllers;
 using Xunit;
 
@@ -352,6 +353,183 @@ public sealed class ControllerIntegrationTests : IClassFixture<LearnifyWebApplic
     }
 
     [Fact]
+    public async Task MaterialsExtractText_Returns401WithoutJwt()
+    {
+        using var content = new MultipartFormDataContent();
+        content.Add(new ByteArrayContent(Encoding.UTF8.GetBytes("private notes")), "file", "private.txt");
+
+        var response = await _client.PostAsync("/api/materials/extract-text", content);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("learnify-source.txt", "Plain text source material.")]
+    [InlineData("learnify-source.md", "# Markdown Source\n\nUseful study material.")]
+    public async Task MaterialsExtractText_TextAndMarkdownWork(string fileName, string content)
+    {
+        var token = await RegisterAndGetTokenAsync();
+
+        using var request = NewFileRequest(
+            "/api/materials/extract-text",
+            token,
+            new ByteArrayContent(Encoding.UTF8.GetBytes(content)),
+            fileName,
+            fileName.EndsWith(".md", StringComparison.OrdinalIgnoreCase) ? "text/markdown" : "text/plain");
+        var response = await _client.SendAsync(request);
+
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<DocumentTextExtractionResult>(JsonOptions);
+        Assert.NotNull(result);
+        Assert.Equal(fileName, result.FileName);
+        Assert.Contains(content.Split('\n')[0].TrimStart('#', ' '), result.ExtractedText);
+        Assert.True(result.CharacterCount > 0);
+    }
+
+    [Fact]
+    public async Task MaterialsExtractText_TextBasedPdfWorks()
+    {
+        var token = await RegisterAndGetTokenAsync();
+
+        using var request = NewFileRequest(
+            "/api/materials/extract-text",
+            token,
+            new ByteArrayContent(CreateTinyTextPdf("Dedicated tools can extract text based PDF content.")),
+            "source.pdf",
+            "application/pdf");
+        var response = await _client.SendAsync(request);
+
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<DocumentTextExtractionResult>(JsonOptions);
+        Assert.NotNull(result);
+        Assert.Contains("Dedicated tools can extract", result.ExtractedText);
+        Assert.Contains("selectable text", result.Warning);
+    }
+
+    [Fact]
+    public async Task MaterialsExtractText_InvalidPdfReturnsClearBadRequest()
+    {
+        var token = await RegisterAndGetTokenAsync();
+
+        using var request = NewFileRequest(
+            "/api/materials/extract-text",
+            token,
+            new ByteArrayContent(Encoding.UTF8.GetBytes("not a pdf")),
+            "not-a-real.pdf",
+            "application/pdf");
+        var response = await _client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("No readable text was extracted", body);
+    }
+
+    [Fact]
+    public async Task MaterialsExtractText_DocxWorks()
+    {
+        var token = await RegisterAndGetTokenAsync();
+
+        using var request = NewFileRequest(
+            "/api/materials/extract-text",
+            token,
+            new ByteArrayContent(CreateTinyDocx("DOCX paragraph one.", "DOCX paragraph two.")),
+            "source.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        var response = await _client.SendAsync(request);
+
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<DocumentTextExtractionResult>(JsonOptions);
+        Assert.NotNull(result);
+        Assert.Contains("DOCX paragraph one", result.ExtractedText);
+        Assert.Contains("plain text only", result.Warning);
+    }
+
+    [Fact]
+    public async Task MaterialsExtractText_UnsupportedFileReturnsBadRequest()
+    {
+        var token = await RegisterAndGetTokenAsync();
+
+        using var request = NewFileRequest(
+            "/api/materials/extract-text",
+            token,
+            new ByteArrayContent(Encoding.UTF8.GetBytes("unsupported")),
+            "source.csv",
+            "text/csv");
+        var response = await _client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Unsupported file type", body);
+    }
+
+    [Fact]
+    public async Task AiController_RateLimitErrorMapsToStructured429()
+    {
+        _factory.FailNextAiCall(new AiProviderException(
+            "AI_RATE_LIMIT",
+            "Gemini",
+            "Gemini quota or rate limit was reached. Try again later, switch provider, or use a local/free mode if available.",
+            "RESOURCE_EXHAUSTED exceeded your current quota",
+            429));
+        var token = await RegisterAndGetTokenAsync();
+
+        using var request = NewRequest(
+            HttpMethod.Post,
+            "/api/ai/summarize",
+            token,
+            new SummarizeNoteRequest("note-1", "content"));
+        var response = await _client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+        Assert.Contains("AI_RATE_LIMIT", body);
+        Assert.Contains("Gemini quota or rate limit was reached", body);
+    }
+
+    [Fact]
+    public async Task AiController_MissingConfigMapsToStructured400()
+    {
+        _factory.FailNextAiCall(new AiProviderException(
+            "AI_CONFIG_MISSING",
+            "Gemini",
+            "Gemini API key is not configured. Add it in user secrets or Settings.",
+            "",
+            400));
+        var token = await RegisterAndGetTokenAsync();
+
+        using var request = NewRequest(
+            HttpMethod.Post,
+            "/api/ai/summarize",
+            token,
+            new SummarizeNoteRequest("note-1", "content"));
+        var response = await _client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("AI_CONFIG_MISSING", body);
+        Assert.Contains("Gemini API key is not configured", body);
+    }
+
+    [Fact]
+    public async Task AiController_GenericProviderFailureMapsToStructured502()
+    {
+        _factory.FailNextAiCall(new InvalidOperationException("Gemini provider error (500). temporary upstream failure"));
+        var token = await RegisterAndGetTokenAsync();
+
+        using var request = NewRequest(
+            HttpMethod.Post,
+            "/api/ai/summarize",
+            token,
+            new SummarizeNoteRequest("note-1", "content"));
+        var response = await _client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        Assert.Contains("AI_PROVIDER_UNAVAILABLE", body);
+        Assert.Contains("temporary upstream failure", body);
+    }
+
+    [Fact]
     public async Task StudyPlanner_FreshUserSummaryReturnsZeros()
     {
         var token = await RegisterAndGetTokenAsync();
@@ -613,6 +791,24 @@ public sealed class ControllerIntegrationTests : IClassFixture<LearnifyWebApplic
         return request;
     }
 
+    private static HttpRequestMessage NewFileRequest(
+        string path,
+        string token,
+        ByteArrayContent fileContent,
+        string fileName,
+        string contentType)
+    {
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+        var multipart = new MultipartFormDataContent
+        {
+            { fileContent, "file", fileName }
+        };
+
+        var request = NewRequest(HttpMethod.Post, path, token);
+        request.Content = multipart;
+        return request;
+    }
+
     private static async Task<T> ReadApiResponseAsync<T>(HttpResponseMessage response)
     {
         var apiResponse = await response.Content.ReadFromJsonAsync<ApiResponse<T>>(JsonOptions);
@@ -660,5 +856,28 @@ public sealed class ControllerIntegrationTests : IClassFixture<LearnifyWebApplic
             .Append("\n%%EOF");
 
         return Encoding.ASCII.GetBytes(builder.ToString());
+    }
+
+    private static byte[] CreateTinyDocx(params string[] paragraphs)
+    {
+        static string XmlEscape(string value)
+            => value.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
+
+        using var memory = new MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(memory, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            var document = archive.CreateEntry("word/document.xml");
+            using var stream = document.Open();
+            using var writer = new StreamWriter(stream, Encoding.UTF8);
+            writer.Write("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>""");
+            writer.Write("""<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>""");
+            foreach (var paragraph in paragraphs)
+            {
+                writer.Write($"""<w:p><w:r><w:t>{XmlEscape(paragraph)}</w:t></w:r></w:p>""");
+            }
+            writer.Write("""</w:body></w:document>""");
+        }
+
+        return memory.ToArray();
     }
 }
