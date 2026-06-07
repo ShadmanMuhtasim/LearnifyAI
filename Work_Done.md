@@ -758,3 +758,26 @@ For production: Azure Key Vault or environment variables injected at deployment 
 - `git diff --check` - passed; only CRLF conversion warnings were printed.
 - Conflict marker scan - no markers found.
 - LocalOpenAI live runtime smoke was blocked because `http://127.0.0.1:8080/v1/models` was unreachable in this pass.
+## M11 Free Local Study Engine + Cache - 2026-06-07
+
+### Summary
+- Added Auto, AI Provider, and Free Local generation modes for summaries, flashcards, and study tips.
+- Added deterministic local summary, flashcard, and study-tip generation that never calls Gemini, OpenAI, Claude, Ollama, LocalOpenAI, or any external API.
+- Added user-scoped `AiGeneratedContentCache` persistence with content hashing and cache metadata responses.
+- Added structured provider error handling for Gemini quota/config/provider failures and Auto-mode fallback to Free Local.
+- Added `POST /api/materials/extract-text` for `.txt`, `.md`, text-based `.pdf`, and `.docx` extraction without sending raw file bytes to AI.
+- Added dedicated tools UI generation-mode toggle, summary-depth selector, source selector, fallback notices, cache badges, and rate-limit snackbar actions.
+- Added Note Detail generation mode selector for Summary, Flashcards, and Study Tips while leaving quiz behavior unchanged.
+
+### Verification Results
+- `dotnet build --no-restore` - passed.
+- `dotnet test --no-restore` - passed, 63 backend tests.
+- `cd Learnify.Client && npm test -- --run` - passed, 37 frontend tests.
+- `cd Learnify.Client && npm run build` - passed.
+- Runtime smoke: not completed yet in this pass.
+
+### OCR Status
+- Text-based PDFs remain supported.
+- Local OCR is not implemented in M11. Scanned/image-only PDFs return a clear OCR-unavailable message.
+
+---

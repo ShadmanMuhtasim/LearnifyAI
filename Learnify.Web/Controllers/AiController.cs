@@ -2,6 +2,7 @@ using Learnify.Application.DTOs.AI;
 using Learnify.Application.Interfaces;
 using Learnify.Application.Settings;
 using Learnify.Core.Interfaces;
+using Learnify.Core.Models;
 using Learnify.Infrastructure.AI;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -17,7 +18,7 @@ public class AiController : ControllerBase
 {
     private static readonly string[] AllowedProviders = ["gemini", "openai", "claude", "ollama", "localopenai", "mock"];
 
-    private readonly IAiService _aiService;
+    private readonly IStudyGenerationService _studyGenerationService;
     private readonly UserAiSettingsStore _store;
     private readonly IUnitOfWork _unitOfWork;
     private readonly AiSettings _aiSettings;
@@ -26,7 +27,7 @@ public class AiController : ControllerBase
     private readonly IAnalyticsService _analyticsService;
 
     public AiController(
-        IAiService aiService,
+        IStudyGenerationService studyGenerationService,
         UserAiSettingsStore store,
         IUnitOfWork unitOfWork,
         IOptions<AiSettings> aiSettings,
@@ -34,7 +35,7 @@ public class AiController : ControllerBase
         ILogger<AiController> logger,
         IAnalyticsService analyticsService)
     {
-        _aiService = aiService;
+        _studyGenerationService = studyGenerationService;
         _store = store;
         _unitOfWork = unitOfWork;
         _aiSettings = aiSettings.Value;
@@ -276,23 +277,34 @@ public class AiController : ControllerBase
 
         try
         {
-            var summary = await _aiService.SummarizeNoteAsync(request.Content, cancellationToken);
+            var result = await _studyGenerationService.GenerateSummaryAsync(
+                GetCurrentUserId(),
+                request.Content,
+                request.GenerationMode,
+                request.SummaryDepth,
+                request.UseCache,
+                request.Regenerate,
+                cancellationToken);
             await TrackAsync("SummaryGenerated", "Note", Guid.TryParse(request.NoteId, out var noteId) ? noteId : null, cancellationToken);
-            return Ok(new SummarizeNoteResponse(request.NoteId, summary, DateTime.UtcNow));
+            return Ok(new SummarizeNoteResponse(
+                request.NoteId,
+                result.Result,
+                DateTime.UtcNow,
+                result.GenerationModeUsed,
+                result.ProviderUsed,
+                result.FromCache,
+                result.Notice,
+                result.ErrorCode));
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("Rate limit"))
-        {
-            return StatusCode(429, new { success = false, message = ex.Message });
-        }
-        catch (InvalidOperationException ex)
+        catch (AiProviderException ex)
         {
             _logger.LogWarning(ex, "AI provider failed while summarizing note '{NoteId}'", request.NoteId);
-            return StatusCode(502, new { success = false, message = ex.Message });
+            return StatusCode(ex.StatusCode, AiErrorResponse.FromException(ex));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error summarizing note '{NoteId}'", request.NoteId);
-            return StatusCode(502, new { success = false, message = "AI provider failed while summarizing this note. Check the active provider settings and try again." });
+            return StatusCode(502, new AiErrorResponse(false, "AI_PROVIDER_UNAVAILABLE", null, "AI provider failed while summarizing this note. Check the active provider settings or switch to Free Local mode.", ex.Message));
         }
     }
 
@@ -308,32 +320,37 @@ public class AiController : ControllerBase
 
         try
         {
-            var flashcards = await _aiService.GenerateFlashcardsAsync(
+            var result = await _studyGenerationService.GenerateFlashcardsAsync(
+                GetCurrentUserId(),
                 request.Content,
                 request.Count,
+                request.GenerationMode,
+                request.UseCache,
+                request.Regenerate,
                 cancellationToken);
 
             var response = new FlashcardResponse(
                 request.NoteId,
-                flashcards.Select(f => new FlashcardItem(f.Question, f.Answer)).ToList(),
-                DateTime.UtcNow);
+                result.Result.Select(f => new FlashcardItem(f.Question, f.Answer)).ToList(),
+                DateTime.UtcNow,
+                result.GenerationModeUsed,
+                result.ProviderUsed,
+                result.FromCache,
+                result.Notice,
+                result.ErrorCode);
 
             await TrackAsync("FlashcardsGenerated", "Note", Guid.TryParse(request.NoteId, out var noteId) ? noteId : null, cancellationToken);
             return Ok(response);
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("Rate limit"))
-        {
-            return StatusCode(429, new { success = false, message = ex.Message });
-        }
-        catch (InvalidOperationException ex)
+        catch (AiProviderException ex)
         {
             _logger.LogWarning(ex, "AI provider failed while generating flashcards for note '{NoteId}'", request.NoteId);
-            return StatusCode(502, new { success = false, message = ex.Message });
+            return StatusCode(ex.StatusCode, AiErrorResponse.FromException(ex));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating flashcards for note '{NoteId}'", request.NoteId);
-            return StatusCode(502, new { success = false, message = "AI provider failed while generating flashcards. Check the active provider settings and try again." });
+            return StatusCode(502, new AiErrorResponse(false, "AI_PROVIDER_UNAVAILABLE", null, "AI provider failed while generating flashcards. Check the active provider settings or switch to Free Local mode.", ex.Message));
         }
     }
 
@@ -349,23 +366,32 @@ public class AiController : ControllerBase
 
         try
         {
-            var tips = await _aiService.GetStudyTipsAsync(request.Topic, cancellationToken);
+            var result = await _studyGenerationService.GenerateStudyTipsAsync(
+                GetCurrentUserId(),
+                request.Topic,
+                request.GenerationMode,
+                request.UseCache,
+                request.Regenerate,
+                cancellationToken);
             await TrackAsync("StudyTipsGenerated", null, null, cancellationToken);
-            return Ok(new StudyTipsResponse(tips, DateTime.UtcNow));
+            return Ok(new StudyTipsResponse(
+                result.Result,
+                DateTime.UtcNow,
+                result.GenerationModeUsed,
+                result.ProviderUsed,
+                result.FromCache,
+                result.Notice,
+                result.ErrorCode));
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("Rate limit"))
-        {
-            return StatusCode(429, new { success = false, message = ex.Message });
-        }
-        catch (InvalidOperationException ex)
+        catch (AiProviderException ex)
         {
             _logger.LogWarning(ex, "AI provider failed while generating study tips for topic '{Topic}'", request.Topic);
-            return StatusCode(502, new { success = false, message = ex.Message });
+            return StatusCode(ex.StatusCode, AiErrorResponse.FromException(ex));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating study tips for topic '{Topic}'", request.Topic);
-            return StatusCode(502, new { success = false, message = "AI provider failed while generating study tips. Check the active provider settings and try again." });
+            return StatusCode(502, new AiErrorResponse(false, "AI_PROVIDER_UNAVAILABLE", null, "AI provider failed while generating study tips. Check the active provider settings or switch to Free Local mode.", ex.Message));
         }
     }
 

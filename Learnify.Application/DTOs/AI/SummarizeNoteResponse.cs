@@ -6,4 +6,9 @@ namespace Learnify.Application.DTOs.AI;
 public record SummarizeNoteResponse(
     string NoteId,
     string Summary,
-    DateTime GeneratedAt);
+    DateTime GeneratedAt,
+    string GenerationModeUsed = "AIProvider",
+    string? ProviderUsed = null,
+    bool FromCache = false,
+    string? Notice = null,
+    string? ErrorCode = null);

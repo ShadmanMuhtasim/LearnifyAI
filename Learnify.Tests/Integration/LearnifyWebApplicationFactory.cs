@@ -17,12 +17,28 @@ public sealed class LearnifyWebApplicationFactory : WebApplicationFactory<global
 {
     private readonly string _databaseName = $"learnify-tests-{Guid.NewGuid()}";
     private int _analyzeDocumentCallCount;
+    private int _summaryCallCount;
+    private int _flashcardsCallCount;
+    private int _studyTipsCallCount;
+    private Exception? _nextAiException;
 
     public int AnalyzeDocumentCallCount => _analyzeDocumentCallCount;
+    public int SummaryCallCount => _summaryCallCount;
+    public int FlashcardsCallCount => _flashcardsCallCount;
+    public int StudyTipsCallCount => _studyTipsCallCount;
 
     public void ResetAiCallCounts()
     {
         _analyzeDocumentCallCount = 0;
+        _summaryCallCount = 0;
+        _flashcardsCallCount = 0;
+        _studyTipsCallCount = 0;
+        _nextAiException = null;
+    }
+
+    public void FailNextAiCall(Exception exception)
+    {
+        _nextAiException = exception;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -76,13 +92,19 @@ public sealed class LearnifyWebApplicationFactory : WebApplicationFactory<global
         }
 
         public Task<string> SummarizeNoteAsync(string content, CancellationToken ct = default)
-            => Task.FromResult("Mocked integration summary.");
+        {
+            _factory.ThrowIfRequested();
+            Interlocked.Increment(ref _factory._summaryCallCount);
+            return Task.FromResult("Mocked integration summary.");
+        }
 
         public Task<IReadOnlyList<FlashcardResult>> GenerateFlashcardsAsync(
             string content,
             int count = 5,
             CancellationToken ct = default)
         {
+            _factory.ThrowIfRequested();
+            Interlocked.Increment(ref _factory._flashcardsCallCount);
             IReadOnlyList<FlashcardResult> cards = Enumerable.Range(1, Math.Max(1, count))
                 .Select(i => new FlashcardResult($"Question {i}?", $"Answer {i}"))
                 .ToList();
@@ -131,7 +153,11 @@ public sealed class LearnifyWebApplicationFactory : WebApplicationFactory<global
         }
 
         public Task<string> GetStudyTipsAsync(string topic, CancellationToken ct = default)
-            => Task.FromResult("Mocked study tips.");
+        {
+            _factory.ThrowIfRequested();
+            Interlocked.Increment(ref _factory._studyTipsCallCount);
+            return Task.FromResult("Mocked study tips.");
+        }
 
         public Task<NoteAnalysisResult> AnalyzeDocumentAsync(
             string content,
@@ -147,6 +173,15 @@ public sealed class LearnifyWebApplicationFactory : WebApplicationFactory<global
                 DetectedTopics = new List<string> { "Mocked Topic" },
                 ExtractedText = content
             });
+        }
+    }
+
+    private void ThrowIfRequested()
+    {
+        var exception = Interlocked.Exchange(ref _nextAiException, null);
+        if (exception is not null)
+        {
+            throw exception;
         }
     }
 

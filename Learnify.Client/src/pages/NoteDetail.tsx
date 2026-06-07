@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import apiClient from '../services/api';
-import { generateFlashcards, getStudyTips, summarizeNote } from '../services/aiService';
+import { generateFlashcards, getStudyTips, summarizeNote, type GenerationMode } from '../services/aiService';
 import { quizService } from '../services/quizService';
 import AttachmentViewer from '../components/Notes/AttachmentViewer';
 import FileUploader from '../components/Notes/FileUploader';
@@ -83,6 +83,11 @@ export default function NoteDetail() {
   const [summary, setSummary] = useState('');
   const [studyTips, setStudyTips] = useState('');
   const [flashcards, setFlashcards] = useState<FlashcardResult[]>([]);
+  const [generationMode, setGenerationMode] = useState<GenerationMode>(() => {
+    const saved = window.localStorage.getItem('learnify-generation-mode');
+    return saved === 'AIProvider' || saved === 'FreeLocal' || saved === 'Auto' ? saved : 'Auto';
+  });
+  const [aiNotice, setAiNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -138,6 +143,7 @@ export default function NoteDetail() {
 
     setActiveTool(tool);
     setAiError(null);
+    setAiNotice(null);
     setAiLoading(tool);
 
     try {
@@ -157,20 +163,34 @@ export default function NoteDetail() {
 
   const handleGenerateSummary = () =>
     runAiAction('summary', async () => {
-      const result = await summarizeNote({ noteId: note!.id, content: note!.content });
+      const result = await summarizeNote({
+        noteId: note!.id,
+        content: note!.content,
+        ...(generationMode !== 'Auto' ? { generationMode } : {}),
+      });
       setSummary(normalizeText(unwrap(result)));
+      setAiNotice(result.notice || (result.fromCache ? 'Loaded from cache.' : null));
     });
 
   const handleGenerateFlashcards = () =>
     runAiAction('flashcards', async () => {
-      const result = await generateFlashcards({ noteId: note!.id, content: note!.content });
+      const result = await generateFlashcards({
+        noteId: note!.id,
+        content: note!.content,
+        ...(generationMode !== 'Auto' ? { generationMode } : {}),
+      });
       setFlashcards(normalizeFlashcards(unwrap(result)));
+      setAiNotice(result.notice || (result.fromCache ? 'Loaded from cache.' : null));
     });
 
   const handleGenerateStudyTips = () =>
     runAiAction('tips', async () => {
-      const result = await getStudyTips({ topic: `${note!.title}\n\n${note!.content}` });
+      const result = await getStudyTips({
+        topic: `${note!.title}\n\n${note!.content}`,
+        ...(generationMode !== 'Auto' ? { generationMode } : {}),
+      });
       setStudyTips(normalizeText(unwrap(result)));
+      setAiNotice(result.notice || (result.fromCache ? 'Loaded from cache.' : null));
     });
 
   const handleGenerateQuiz = () =>
@@ -367,6 +387,29 @@ export default function NoteDetail() {
 
             {isFileOnlyPdf && <div className="alert alert-warning">{AI_UNAVAILABLE_MESSAGE}</div>}
 
+            <label>
+              <span className="form-label">Generation mode</span>
+              <select
+                value={generationMode}
+                onChange={(event) => {
+                  const mode = event.target.value as GenerationMode;
+                  setGenerationMode(mode);
+                  window.localStorage.setItem('learnify-generation-mode', mode);
+                }}
+              >
+                <option value="Auto">Auto</option>
+                <option value="AIProvider">AI</option>
+                <option value="FreeLocal">Free Local</option>
+              </select>
+            </label>
+            <p className="muted text-small">
+              {generationMode === 'Auto'
+                ? 'Best balance. Uses AI when available and falls back if quota is reached.'
+                : generationMode === 'AIProvider'
+                  ? 'Best quality. Uses selected provider.'
+                  : 'Always free. No API tokens. Simpler output.'}
+            </p>
+
             <div className="ai-action-list">
               <AppButton type="button" variant="secondary" onClick={handleGenerateSummary} disabled={aiLoading !== null || !hasUsableAiContent}>
                 {aiLoading === 'summary' ? 'Generating Summary...' : 'Generate Summary'}
@@ -418,6 +461,7 @@ export default function NoteDetail() {
 
         <Card className="stack">
           <h2>Active AI Tool</h2>
+          {aiNotice && <div className="alert alert-info">{aiNotice}</div>}
           {aiError && <div className="alert alert-danger">{aiError}</div>}
           {!activeTool && <p className="muted">Choose an AI action from the analysis panel.</p>}
           {activeTool === 'summary' && !aiError && <p className="ai-output-text">{summary || 'Summary will appear here.'}</p>}

@@ -5,4 +5,9 @@ namespace Learnify.Application.DTOs.AI;
 /// </summary>
 public record StudyTipsResponse(
     string Tips,
-    DateTime GeneratedAt);
+    DateTime GeneratedAt,
+    string GenerationModeUsed = "AIProvider",
+    string? ProviderUsed = null,
+    bool FromCache = false,
+    string? Notice = null,
+    string? ErrorCode = null);

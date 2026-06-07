@@ -2,6 +2,20 @@
 
 Last updated: 2026-06-05
 
+## M11 Free Local Study Engine + Cache Status
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Free Local summaries | Complete | Deterministic local summary output includes Overview, Key Points, Important Details, Important Terms, Must Remember, and Short Revision Summary. |
+| Free Local flashcards | Complete | Generates cards from definitions, headings, important statements, rules/exceptions, and cause/effect patterns without provider calls. |
+| Free Local study tips | Complete | Generates content-specific active recall, key concept, confusion, mini-plan, and self-test sections without provider calls. |
+| Auto / AI / Free Local modes | Complete | Summary, Flashcards, and Study Tips accept mode fields. Auto falls back to Free Local for provider quota/config/network-style failures. AI Provider does not silently fallback. |
+| AI result cache | Complete | Successful AI and Free Local summary/flashcard/study-tip outputs are cached per user with hashed source/options and `fromCache` metadata. |
+| Dedicated tools AI/non-AI toggle | Complete | Dedicated tools expose Auto, AI, and Free Local controls near generation actions. |
+| Rate-limit snackbar | Complete | Dedicated tools show a rate-limit snackbar with Use Free Local, Open AI Settings, and Switch Provider actions. |
+| Scanned PDF OCR | Future work | Local OCR is not implemented. Scanned/image-only PDFs return a clear OCR-unavailable message. |
+| Free Local quality | Caveat | Local output is simpler than AI output and should be treated as fallback/offline study help. |
+
 ## M6R Smart Learning Core Status
 
 | Area | Status | Notes |

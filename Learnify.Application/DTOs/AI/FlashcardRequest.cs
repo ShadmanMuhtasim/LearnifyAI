@@ -6,4 +6,7 @@ namespace Learnify.Application.DTOs.AI;
 public record FlashcardRequest(
     string NoteId,
     string Content,
-    int Count = 5);
+    int Count = 5,
+    string GenerationMode = "Auto",
+    bool UseCache = true,
+    bool Regenerate = false);

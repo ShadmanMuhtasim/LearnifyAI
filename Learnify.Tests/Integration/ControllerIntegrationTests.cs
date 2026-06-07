@@ -5,6 +5,7 @@ using System.Text.Json;
 using Learnify.Application;
 using Learnify.Application.DTOs;
 using Learnify.Application.DTOs.AI;
+using Learnify.Core.Models;
 using Learnify.Web.Controllers;
 using Xunit;
 
@@ -20,6 +21,7 @@ public sealed class ControllerIntegrationTests : IClassFixture<LearnifyWebApplic
     public ControllerIntegrationTests(LearnifyWebApplicationFactory factory)
     {
         _factory = factory;
+        _factory.ResetAiCallCounts();
         _client = factory.CreateClient();
     }
 
@@ -186,6 +188,138 @@ public sealed class ControllerIntegrationTests : IClassFixture<LearnifyWebApplic
             new FlashcardRequest("note-1", "cell biology notes", Count: 2),
             token);
         Assert.Equal(2, flashcardResponse.Flashcards.Count);
+    }
+
+    [Fact]
+    public async Task AiController_FreeLocalModeDoesNotCallProviderAndReturnsSections()
+    {
+        var token = await RegisterAndGetTokenAsync();
+
+        var response = await PostJsonAsync<SummarizeNoteResponse>(
+            "/api/ai/summarize",
+            new SummarizeNoteRequest(
+                "note-1",
+                "Contract law is defined as rules for enforceable agreements. Section 10 requires agreement and consideration.",
+                GenerationMode: "FreeLocal"),
+            token);
+
+        Assert.Equal("FreeLocal", response.GenerationModeUsed);
+        Assert.Contains("## Overview", response.Summary);
+        Assert.Contains("## Important Details", response.Summary);
+        Assert.Contains("Section 10", response.Summary);
+        Assert.Equal(0, _factory.SummaryCallCount);
+    }
+
+    [Fact]
+    public async Task AiController_AutoModeFallsBackToFreeLocalOnRateLimit()
+    {
+        var token = await RegisterAndGetTokenAsync();
+        _factory.FailNextAiCall(new AiProviderException(
+            "AI_RATE_LIMIT",
+            "Gemini quota or rate limit was reached.",
+            "Gemini",
+            429));
+
+        var response = await PostJsonAsync<StudyTipsResponse>(
+            "/api/ai/study-tips",
+            new StudyTipsRequest(
+                "Neural networks use gradient descent because weights must be adjusted after loss is measured.",
+                GenerationMode: "Auto"),
+            token);
+
+        Assert.Equal("FreeLocal", response.GenerationModeUsed);
+        Assert.Equal("AI_RATE_LIMIT", response.ErrorCode);
+        Assert.Contains("free local generation", response.Notice, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("## Active Recall Questions", response.Tips);
+    }
+
+    [Fact]
+    public async Task AiController_AiProviderModeDoesNotFallbackSilently()
+    {
+        var token = await RegisterAndGetTokenAsync();
+        _factory.FailNextAiCall(new AiProviderException(
+            "AI_RATE_LIMIT",
+            "Gemini quota or rate limit was reached.",
+            "Gemini",
+            429));
+
+        using var request = NewRequest(
+            HttpMethod.Post,
+            "/api/ai/summarize",
+            token,
+            new SummarizeNoteRequest("note-1", "cell biology notes", GenerationMode: "AIProvider"));
+        var response = await _client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+        Assert.Contains("AI_RATE_LIMIT", body);
+    }
+
+    [Fact]
+    public async Task AiController_CachesSuccessfulResultsAndScopesCacheByUser()
+    {
+        var userAToken = await RegisterAndGetTokenAsync();
+        var content = "Photosynthesis converts light energy into chemical energy in chloroplasts.";
+
+        var first = await PostJsonAsync<SummarizeNoteResponse>(
+            "/api/ai/summarize",
+            new SummarizeNoteRequest("note-1", content, GenerationMode: "Auto"),
+            userAToken);
+        var second = await PostJsonAsync<SummarizeNoteResponse>(
+            "/api/ai/summarize",
+            new SummarizeNoteRequest("note-1", content, GenerationMode: "Auto"),
+            userAToken);
+
+        Assert.False(first.FromCache);
+        Assert.True(second.FromCache);
+        Assert.Equal(1, _factory.SummaryCallCount);
+
+        var userBToken = await RegisterAndGetTokenAsync();
+        await PostJsonAsync<SummarizeNoteResponse>(
+            "/api/ai/summarize",
+            new SummarizeNoteRequest("note-1", content, GenerationMode: "Auto"),
+            userBToken);
+
+        Assert.Equal(2, _factory.SummaryCallCount);
+    }
+
+    [Fact]
+    public async Task MaterialsController_ExtractsTextAndReturnsClearOcrUnavailableMessage()
+    {
+        var token = await RegisterAndGetTokenAsync();
+
+        using var textRequest = NewMaterialRequest(
+            "/api/materials/extract-text",
+            token,
+            new ByteArrayContent(Encoding.UTF8.GetBytes("Important markdown study text.")),
+            "study.md",
+            "text/markdown");
+        var textResponse = await _client.SendAsync(textRequest);
+        textResponse.EnsureSuccessStatusCode();
+        var textBody = await textResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Important markdown study text", textBody);
+
+        using var pdfRequest = NewMaterialRequest(
+            "/api/materials/extract-text",
+            token,
+            new ByteArrayContent(CreateTinyTextPdf("Material PDF extraction works.")),
+            "study.pdf",
+            "application/pdf");
+        var pdfResponse = await _client.SendAsync(pdfRequest);
+        pdfResponse.EnsureSuccessStatusCode();
+        var pdfBody = await pdfResponse.Content.ReadAsStringAsync();
+        Assert.Contains("Material PDF extraction works", pdfBody);
+
+        using var invalidPdfRequest = NewMaterialRequest(
+            "/api/materials/extract-text",
+            token,
+            new ByteArrayContent(CreateTinyTextPdf(string.Empty)),
+            "scanned.pdf",
+            "application/pdf");
+        var invalidPdfResponse = await _client.SendAsync(invalidPdfRequest);
+        var invalidBody = await invalidPdfResponse.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.BadRequest, invalidPdfResponse.StatusCode);
+        Assert.Contains("OCR is not available", invalidBody);
     }
 
     [Fact]
@@ -599,6 +733,23 @@ public sealed class ControllerIntegrationTests : IClassFixture<LearnifyWebApplic
             { fileContent, "file", fileName }
         };
 
+        var request = NewRequest(HttpMethod.Post, path, token);
+        request.Content = multipart;
+        return request;
+    }
+
+    private static HttpRequestMessage NewMaterialRequest(
+        string path,
+        string token,
+        ByteArrayContent fileContent,
+        string fileName,
+        string contentType)
+    {
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+        var multipart = new MultipartFormDataContent
+        {
+            { fileContent, "file", fileName }
+        };
         var request = NewRequest(HttpMethod.Post, path, token);
         request.Content = multipart;
         return request;

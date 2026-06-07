@@ -75,15 +75,16 @@ public class AiProviderFactory : IAiService
 
         _logger.LogInformation("AI provider resolved to '{Provider}' for user {UserId}", config.Provider, userId);
 
-        // If provider needs a key but none is configured, fall back to Mock
         var providerName = config.Provider.ToLowerInvariant();
         var needsKey = providerName is "gemini" or "openai" or "claude";
         if (needsKey && string.IsNullOrWhiteSpace(config.ApiKey))
         {
-            _logger.LogWarning(
-                "Provider '{Provider}' has no API key. Falling back to MockAiProvider.",
-                config.Provider);
-            return (new MockAiProvider(), new UserAiSettingsStore.ProviderConfig("Mock", string.Empty, "mock", string.Empty));
+            _logger.LogWarning("Provider '{Provider}' has no API key configured.", config.Provider);
+            throw new AiProviderException(
+                "AI_CONFIG_MISSING",
+                $"{config.Provider} API key is not configured. Add it in AI Settings or switch to Free Local mode.",
+                config.Provider,
+                400);
         }
 
         IAiProvider provider = config.Provider.ToLowerInvariant() switch
@@ -258,8 +259,12 @@ public class AiProviderFactory : IAiService
         // while still asking every provider for a short summary.
         var options = new AiRequestOptions { MaxTokens = 3000, Temperature = 0.3f };
         var response = await provider.CompleteAsync(
-            $"Summarize the following educational content in 2-3 concise sentences. " +
-            $"Return only the final summary text, with no reasoning or preamble:\n\n{content}",
+            "Create a structured markdown study summary with exactly these sections:\n" +
+            "## Overview\n## Key Points\n## Important Details\n## Important Terms\n## Must Remember\n## Short Revision Summary\n\n" +
+            "Use exam-focused takeaways, no unnecessary fluff, and no oversimplification. " +
+            "Do not remove important details such as dates, names, definitions, legal rules, formulas, examples, exceptions, lists, classifications, and cause-effect relationships. " +
+            "Compress intelligently while preserving learning-critical information. Return only the final summary.\n\n" +
+            $"Study material:\n{content[..Math.Min(content.Length, 9000)]}",
             options, ct);
         return response;
     }
@@ -270,10 +275,10 @@ public class AiProviderFactory : IAiService
         var userId = GetCurrentUserId();
         var provider = await GetActiveProviderAsync(userId);
         _logger.LogDebug("Generating {Count} flashcards via '{Provider}'", count, provider.ProviderName);
-        var prompt = $"Generate exactly {count} flashcard pairs from the following study material. " +
-                     $"Each flashcard should have a 'question' and 'answer'. " +
-                     $"Return the result as a JSON array of objects with 'question' and 'answer' properties. " +
-                     $"Do NOT include any markdown formatting or code blocks - return ONLY the raw JSON array.\n\n" +
+        var prompt = $"Generate exactly {count} high-quality active recall flashcards from the following study material. " +
+                     "Include why/how/cause-effect questions where relevant, legal or academic rule cards where relevant, and concise answers. " +
+                     "Do not create duplicate questions. Return JSON only: an array of objects with 'question' and 'answer' properties. " +
+                     "No markdown fences, no commentary, no trailing text.\n\n" +
                      $"Material:\n{content}";
 
         var options = new AiRequestOptions { MaxTokens = 2000, Temperature = 0.7f };
@@ -358,6 +363,7 @@ public class AiProviderFactory : IAiService
         "TrueFalse: options must be [\"True\",\"False\"]; correctAnswer must be \"True\" or \"False\".\n" +
         "ShortAnswer: options must be []; correctAnswer must be concise.\n" +
         "FillInTheBlank: questionText must contain ____; options must be []; correctAnswer must be concise.\n" +
+        "Every question must include an explanation. Do not duplicate questions.\n" +
         "Study material:\n" +
         content[..Math.Min(content.Length, 9000)];
 

@@ -26,6 +26,18 @@
 
 LearnifyAI is a full-stack AI-powered learning platform targeting individual learners, university students, professionals, and exam preparation students. Users upload study materials (notes, markdown, PDFs) and AI analyzes the content to generate summaries, flashcards, quizzes, study plans, and personalized learning insights.
 
+Summary, Flashcard, and Study Tips tools support three generation modes:
+
+| Mode | Behavior |
+|---|---|
+| Auto | Uses the selected AI provider when available and falls back to Free Local generation for quota, config, timeout, or provider failures. |
+| AIProvider | Uses the configured provider only and returns a clear provider error if it fails. |
+| FreeLocal | Uses deterministic local generation only. No API tokens or external provider calls are used. |
+
+Successful AI and Free Local outputs are cached per user by normalized content hash, task type, provider/model, mode, and options. Responses include `fromCache`, `generationModeUsed`, `providerUsed`, and optional `notice` metadata.
+
+Dedicated tools can extract text from `.txt`, `.md`, text-based `.pdf`, and `.docx` files through `POST /api/materials/extract-text`. Raw PDF/DOCX bytes are not sent to AI. Scanned/image-only PDFs are not OCR-supported yet and return a clear OCR-unavailable message.
+
 ---
 
 ## Tech Stack

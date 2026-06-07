@@ -9,17 +9,30 @@ import apiClient from './api';
 export interface SummarizeNoteRequest {
   noteId: string;
   content: string;
+  generationMode?: GenerationMode;
+  summaryDepth?: SummaryDepth;
+  useCache?: boolean;
+  regenerate?: boolean;
 }
 
 export interface FlashcardRequest {
   noteId: string;
   content: string;
   count?: number;
+  generationMode?: GenerationMode;
+  useCache?: boolean;
+  regenerate?: boolean;
 }
 
 export interface StudyTipsRequest {
   topic: string;
+  generationMode?: GenerationMode;
+  useCache?: boolean;
+  regenerate?: boolean;
 }
+
+export type GenerationMode = 'Auto' | 'AIProvider' | 'FreeLocal';
+export type SummaryDepth = 'Quick' | 'Balanced' | 'Detailed';
 
 // ─── Response Types ──────────────────────────────────────────
 
@@ -27,6 +40,11 @@ export interface SummarizeNoteResponse {
   noteId: string;
   summary: string;
   generatedAt: string;
+  generationModeUsed?: GenerationMode | string;
+  providerUsed?: string | null;
+  fromCache?: boolean;
+  notice?: string | null;
+  errorCode?: string | null;
 }
 
 export interface FlashcardItem {
@@ -38,11 +56,21 @@ export interface FlashcardResponse {
   noteId: string;
   flashcards: FlashcardItem[];
   generatedAt: string;
+  generationModeUsed?: GenerationMode | string;
+  providerUsed?: string | null;
+  fromCache?: boolean;
+  notice?: string | null;
+  errorCode?: string | null;
 }
 
 export interface StudyTipsResponse {
   tips: string;
   generatedAt: string;
+  generationModeUsed?: GenerationMode | string;
+  providerUsed?: string | null;
+  fromCache?: boolean;
+  notice?: string | null;
+  errorCode?: string | null;
 }
 
 export interface ActiveProviderResponse {

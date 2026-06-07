@@ -25,6 +25,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<LearningActivity> LearningActivities { get; set; } = null!;
     public DbSet<Achievement> Achievements { get; set; } = null!;
     public DbSet<UserAchievement> UserAchievements { get; set; } = null!;
+    public DbSet<AiGeneratedContentCache> AiGeneratedContentCaches { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -68,6 +69,11 @@ public class ApplicationDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasMany<UserAchievement>()
+                  .WithOne(e => e.User)
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasMany<AiGeneratedContentCache>()
                   .WithOne(e => e.User)
                   .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
@@ -238,6 +244,31 @@ public class ApplicationDbContext : DbContext
                   .WithMany(e => e.UserAchievements)
                   .HasForeignKey(e => e.AchievementId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AiGeneratedContentCache>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new
+            {
+                e.UserId,
+                e.TaskType,
+                e.SourceHash,
+                e.Provider,
+                e.Model,
+                e.GenerationMode,
+                e.SummaryDepth
+            }).IsUnique();
+            entity.Property(e => e.TaskType).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.SourceHash).IsRequired().HasMaxLength(128);
+            entity.Property(e => e.Provider).IsRequired().HasMaxLength(80);
+            entity.Property(e => e.Model).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.GenerationMode).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.SummaryDepth).HasMaxLength(50);
+            entity.Property(e => e.ResultJson);
+            entity.Property(e => e.ResultMarkdown);
+            entity.Property(e => e.Notice).HasMaxLength(1000);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
         });
     }
 
