@@ -4,4 +4,5 @@ namespace Learnify.Application.DTOs.AI;
 /// Request DTO for generating study tips for a topic.
 /// </summary>
 public record StudyTipsRequest(
-    string Topic);
+    string Topic,
+    string? GenerationMode = "Auto");

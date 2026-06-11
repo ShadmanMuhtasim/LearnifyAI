@@ -9,17 +9,22 @@ import apiClient from './api';
 export interface SummarizeNoteRequest {
   noteId: string;
   content: string;
+  generationMode?: GenerationMode;
 }
 
 export interface FlashcardRequest {
   noteId: string;
   content: string;
   count?: number;
+  generationMode?: GenerationMode;
 }
 
 export interface StudyTipsRequest {
   topic: string;
+  generationMode?: GenerationMode;
 }
+
+export type GenerationMode = 'Auto' | 'AIProvider' | 'FreeLocal';
 
 // ─── Response Types ──────────────────────────────────────────
 
@@ -27,6 +32,10 @@ export interface SummarizeNoteResponse {
   noteId: string;
   summary: string;
   generatedAt: string;
+  generationModeUsed?: GenerationMode;
+  providerUsed?: string | null;
+  notice?: string | null;
+  fromCache?: boolean;
 }
 
 export interface FlashcardItem {
@@ -38,11 +47,19 @@ export interface FlashcardResponse {
   noteId: string;
   flashcards: FlashcardItem[];
   generatedAt: string;
+  generationModeUsed?: GenerationMode;
+  providerUsed?: string | null;
+  notice?: string | null;
+  fromCache?: boolean;
 }
 
 export interface StudyTipsResponse {
   tips: string;
   generatedAt: string;
+  generationModeUsed?: GenerationMode;
+  providerUsed?: string | null;
+  notice?: string | null;
+  fromCache?: boolean;
 }
 
 export interface ActiveProviderResponse {

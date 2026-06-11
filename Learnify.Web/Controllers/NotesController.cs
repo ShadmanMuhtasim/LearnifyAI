@@ -4,6 +4,7 @@ using Learnify.Application.DTOs;
 using Learnify.Application.Interfaces;
 using Learnify.Core.Entities;
 using Learnify.Core.Interfaces;
+using Learnify.Core.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -20,12 +21,13 @@ public class NotesController : ControllerBase
     private const string FileOnlyPdfContent =
         "This PDF was uploaded without text extraction. Use AI Analyze on a text-based PDF or upload .txt/.md content to generate AI study tools.";
     private const string NoReadableTextMessage =
-        "No readable text was extracted. Please upload a text-based PDF, .txt, or .md file.";
+        "No readable text was extracted. Please upload a text-based PDF, .txt, .md, or .docx file.";
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
     private readonly ILogger<NotesController> _logger;
     private readonly IPdfTextExtractor _pdfTextExtractor;
+    private readonly IDocumentTextExtractor _documentTextExtractor;
     private readonly IAnalyticsService _analyticsService;
 
     public NotesController(
@@ -33,12 +35,14 @@ public class NotesController : ControllerBase
         IMapper mapper,
         ILogger<NotesController> logger,
         IPdfTextExtractor pdfTextExtractor,
+        IDocumentTextExtractor documentTextExtractor,
         IAnalyticsService analyticsService)
     {
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _logger = logger;
         _pdfTextExtractor = pdfTextExtractor;
+        _documentTextExtractor = documentTextExtractor;
         _analyticsService = analyticsService;
     }
 
@@ -488,6 +492,238 @@ public class NotesController : ControllerBase
         }
     }
 
+    // POST: api/notes/upload-material
+    [HttpPost("upload-material")]
+    [RequestSizeLimit(5_500_000)]
+    public async Task<ActionResult<ApiResponse<UploadMaterialResponse>>> UploadMaterial(
+        [FromForm] Guid courseId,
+        [FromForm] IFormFile file,
+        [FromForm] string mode,
+        [FromForm] string? title,
+        [FromForm] string? generationMode,
+        [FromForm] string? summaryDepth,
+        [FromServices] IAiService aiService,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (file == null || file.Length == 0)
+            {
+                return BadRequest(ApiResponse<UploadMaterialResponse>.BadRequest("Choose a .txt, .md, .pdf, or .docx file."));
+            }
+
+            if (file.Length > MaxSimplePdfBytes)
+            {
+                return BadRequest(ApiResponse<UploadMaterialResponse>.BadRequest("File too large. Maximum 5MB."));
+            }
+
+            var normalizedMode = NormalizeUploadMode(mode);
+            var userId = GetUserId();
+            var course = await _unitOfWork.Courses.GetByIdAsync(courseId);
+            if (course == null || course.UserId != userId)
+            {
+                return NotFound(ApiResponse<UploadMaterialResponse>.NotFound($"Course with ID {courseId} not found."));
+            }
+
+            var fileBytes = await ReadFileBytesAsync(file, cancellationToken);
+            var attachment = CreateAttachment(file, fileBytes);
+            var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+            var extractionStatus = "NotExtracted";
+            string? warning = null;
+            var extractedText = string.Empty;
+            var aiUsed = false;
+            string? generationModeUsed = null;
+
+            if (normalizedMode == "SaveOnly")
+            {
+                if (extension is ".txt" or ".md")
+                {
+                    var extraction = await _documentTextExtractor.ExtractAsync(file.FileName, file.ContentType, fileBytes, cancellationToken);
+                    extractedText = extraction.Text;
+                    extractionStatus = string.IsNullOrWhiteSpace(extractedText) ? "Failed" : extraction.Status;
+                    warning = extraction.Warning;
+                }
+            }
+            else
+            {
+                var extraction = await _documentTextExtractor.ExtractAsync(file.FileName, file.ContentType, fileBytes, cancellationToken);
+                extractedText = extraction.Text;
+                extractionStatus = string.IsNullOrWhiteSpace(extractedText) ? extraction.Status : extraction.Status;
+                warning = extraction.Warning;
+
+                if (string.IsNullOrWhiteSpace(extractedText))
+                {
+                    return BadRequest(ApiResponse<UploadMaterialResponse>.BadRequest(warning ?? NoReadableTextMessage));
+                }
+            }
+
+            var noteContent = BuildSavedNoteContent(
+                normalizedMode,
+                title,
+                file.FileName,
+                extractedText,
+                warning);
+
+            if (normalizedMode == "AiAnalyzeAndSave")
+            {
+                var analysis = await aiService.AnalyzeDocumentAsync(extractedText, file.FileName, cancellationToken);
+                aiUsed = true;
+                generationModeUsed = string.IsNullOrWhiteSpace(generationMode) ? "AIProvider" : generationMode.Trim();
+                noteContent = BuildAnalyzedNoteContent(title, file.FileName, analysis.Summary, analysis.DetectedTopics, extractedText);
+            }
+
+            var note = new Note
+            {
+                Id = Guid.NewGuid(),
+                Content = noteContent,
+                CourseId = course.Id,
+                CreatedAt = DateTime.UtcNow,
+                Attachments = new List<NoteAttachment> { attachment }
+            };
+
+            await _unitOfWork.Notes.AddAsync(note);
+            await _unitOfWork.SaveChangesAsync();
+            await TrackAsync(userId, extension == ".pdf" ? "PdfUploaded" : "NoteUploaded", "Note", note.Id);
+
+            var response = new UploadMaterialResponse(
+                note.Id,
+                string.IsNullOrWhiteSpace(title) ? Path.GetFileNameWithoutExtension(file.FileName) : title.Trim(),
+                extractionStatus,
+                extractedText.Length,
+                note.Attachments.Count,
+                warning,
+                aiUsed,
+                generationModeUsed,
+                false,
+                BuildUploadMessage(normalizedMode, extractionStatus));
+
+            return CreatedAtAction(nameof(GetNote), new { id = note.Id },
+                ApiResponse<UploadMaterialResponse>.Ok(response, response.Message));
+        }
+        catch (NotSupportedException ex)
+        {
+            return BadRequest(ApiResponse<UploadMaterialResponse>.BadRequest(ex.Message));
+        }
+        catch (InvalidDataException ex)
+        {
+            return BadRequest(ApiResponse<UploadMaterialResponse>.BadRequest(ex.Message));
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Rate limit"))
+        {
+            return StatusCode(429, ApiResponse<UploadMaterialResponse>.BadRequest(ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "AI provider could not analyze uploaded material '{FileName}'", file.FileName);
+            return StatusCode(502, ApiResponse<UploadMaterialResponse>.BadRequest(ex.Message));
+        }
+    }
+
+    // POST: api/notes/{noteId}/extract-attachment-text
+    [HttpPost("{noteId:guid}/extract-attachment-text")]
+    public async Task<ActionResult<ApiResponse<PostUploadExtractionResponse>>> ExtractAttachmentText(
+        Guid noteId,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var note = await GetOwnedNoteAsync(noteId);
+            if (note == null)
+            {
+                return NotFound(ApiResponse<PostUploadExtractionResponse>.NotFound("Note not found."));
+            }
+
+            var extraction = await ExtractFirstAttachmentAsync(note, cancellationToken);
+            if (string.IsNullOrWhiteSpace(extraction.Text))
+            {
+                return BadRequest(ApiResponse<PostUploadExtractionResponse>.BadRequest(extraction.Warning ?? NoReadableTextMessage));
+            }
+
+            note.Content = BuildSavedNoteContent("ExtractAndSave", null, note.Attachments.First().Name, extraction.Text, extraction.Warning);
+            await _unitOfWork.SaveChangesAsync();
+
+            var response = new PostUploadExtractionResponse(
+                note.Id,
+                extraction.Status,
+                extraction.Text.Length,
+                extraction.Warning,
+                "Extracted text from the saved attachment.");
+
+            return Ok(ApiResponse<PostUploadExtractionResponse>.Ok(response, response.Message));
+        }
+        catch (InvalidDataException ex)
+        {
+            return BadRequest(ApiResponse<PostUploadExtractionResponse>.BadRequest(ex.Message));
+        }
+    }
+
+    // POST: api/notes/{noteId}/analyze-existing
+    [HttpPost("{noteId:guid}/analyze-existing")]
+    public async Task<ActionResult<ApiResponse<UploadMaterialResponse>>> AnalyzeExisting(
+        Guid noteId,
+        [FromBody] AnalyzeExistingRequest request,
+        [FromServices] IAiService aiService,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var note = await GetOwnedNoteAsync(noteId);
+            if (note == null)
+            {
+                return NotFound(ApiResponse<UploadMaterialResponse>.NotFound("Note not found."));
+            }
+
+            var readableText = IsPlaceholderContent(note.Content) ? string.Empty : note.Content;
+            string? warning = null;
+            var extractionStatus = string.IsNullOrWhiteSpace(readableText) ? "NotExtracted" : "Extracted";
+
+            if (string.IsNullOrWhiteSpace(readableText))
+            {
+                var extraction = await ExtractFirstAttachmentAsync(note, cancellationToken);
+                if (string.IsNullOrWhiteSpace(extraction.Text))
+                {
+                    return BadRequest(ApiResponse<UploadMaterialResponse>.BadRequest(extraction.Warning ?? NoReadableTextMessage));
+                }
+
+                readableText = extraction.Text;
+                warning = extraction.Warning;
+                extractionStatus = extraction.Status;
+            }
+
+            var attachmentName = note.Attachments.FirstOrDefault()?.Name ?? "saved note";
+            var analysis = await aiService.AnalyzeDocumentAsync(readableText, attachmentName, cancellationToken);
+            note.Content = BuildAnalyzedNoteContent(null, attachmentName, analysis.Summary, analysis.DetectedTopics, readableText);
+            await _unitOfWork.SaveChangesAsync();
+
+            var response = new UploadMaterialResponse(
+                note.Id,
+                attachmentName,
+                extractionStatus,
+                readableText.Length,
+                note.Attachments.Count,
+                warning,
+                true,
+                string.IsNullOrWhiteSpace(request.GenerationMode) ? "AIProvider" : request.GenerationMode,
+                false,
+                "Analyzed the saved file using extracted text.");
+
+            return Ok(ApiResponse<UploadMaterialResponse>.Ok(response, response.Message));
+        }
+        catch (InvalidDataException ex)
+        {
+            return BadRequest(ApiResponse<UploadMaterialResponse>.BadRequest(ex.Message));
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Rate limit"))
+        {
+            return StatusCode(429, ApiResponse<UploadMaterialResponse>.BadRequest(ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "AI provider could not analyze existing note '{NoteId}'", noteId);
+            return StatusCode(502, ApiResponse<UploadMaterialResponse>.BadRequest(ex.Message));
+        }
+    }
+
     // POST: api/notes/analyze-upload
     [HttpPost("analyze-upload")]
     public async Task<ActionResult<ApiResponse<AnalyzeUploadResponse>>> AnalyzeAndSave(
@@ -653,6 +889,113 @@ public class NotesController : ControllerBase
         return string.Empty;
     }
 
+    private async Task<Note?> GetOwnedNoteAsync(Guid noteId)
+    {
+        var userId = GetUserId();
+        var notes = await _unitOfWork.Notes.FindByUserIdAsync(userId);
+        return notes.FirstOrDefault(note => note.Id == noteId);
+    }
+
+    private async Task<DocumentTextExtractionResult> ExtractFirstAttachmentAsync(
+        Note note,
+        CancellationToken cancellationToken)
+    {
+        var attachment = note.Attachments.FirstOrDefault()
+            ?? throw new InvalidDataException("This note does not have an attachment to extract.");
+
+        var fileBytes = Convert.FromBase64String(attachment.Base64);
+        return await _documentTextExtractor.ExtractAsync(
+            attachment.Name,
+            attachment.Type,
+            fileBytes,
+            cancellationToken);
+    }
+
+    private static async Task<byte[]> ReadFileBytesAsync(IFormFile file, CancellationToken cancellationToken)
+    {
+        using var memoryStream = new MemoryStream();
+        await file.CopyToAsync(memoryStream, cancellationToken);
+        return memoryStream.ToArray();
+    }
+
+    private static NoteAttachment CreateAttachment(IFormFile file, byte[] fileBytes) =>
+        new()
+        {
+            Id = Guid.NewGuid(),
+            Name = Path.GetFileName(file.FileName),
+            Type = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+            Base64 = Convert.ToBase64String(fileBytes)
+        };
+
+    private static string NormalizeUploadMode(string mode) =>
+        mode.Trim().ToLowerInvariant() switch
+        {
+            "extractandsave" or "extract" => "ExtractAndSave",
+            "aianalyzeandsave" or "aianalyze" or "analyze" => "AiAnalyzeAndSave",
+            _ => "SaveOnly"
+        };
+
+    private static bool IsPlaceholderContent(string content) =>
+        string.IsNullOrWhiteSpace(content) ||
+        content.Trim().Equals(FileOnlyPdfContent, StringComparison.OrdinalIgnoreCase) ||
+        content.Contains("uploaded without text extraction", StringComparison.OrdinalIgnoreCase);
+
+    private static string BuildSavedNoteContent(
+        string mode,
+        string? title,
+        string fileName,
+        string extractedText,
+        string? warning)
+    {
+        var heading = string.IsNullOrWhiteSpace(title)
+            ? Path.GetFileNameWithoutExtension(fileName)
+            : title.Trim();
+
+        if (mode == "SaveOnly" && string.IsNullOrWhiteSpace(extractedText))
+        {
+            return FileOnlyPdfContent;
+        }
+
+        var warningSection = string.IsNullOrWhiteSpace(warning)
+            ? string.Empty
+            : $"## Extraction Warning\n{warning}\n\n";
+
+        return $"# {heading}\n\n" +
+               warningSection +
+               $"## Extracted Text\n{extractedText.Trim()}\n\n" +
+               $"## Source File\n{fileName}";
+    }
+
+    private static string BuildAnalyzedNoteContent(
+        string? title,
+        string fileName,
+        string summary,
+        List<string> detectedTopics,
+        string extractedText)
+    {
+        var heading = string.IsNullOrWhiteSpace(title)
+            ? Path.GetFileNameWithoutExtension(fileName)
+            : title.Trim();
+
+        return $"# {heading}\n\n" +
+               $"## AI Summary\n{summary}\n\n" +
+               (detectedTopics.Any()
+                   ? $"## Detected Topics\n{string.Join("\n", detectedTopics.Select(topic => $"- {topic}"))}\n\n"
+                   : string.Empty) +
+               $"## Extracted Text\n{extractedText.Trim()}\n\n" +
+               $"## Source File\n{fileName}";
+    }
+
+    private static string BuildUploadMessage(string mode, string extractionStatus) =>
+        mode switch
+        {
+            "ExtractAndSave" => extractionStatus == "OcrExtracted"
+                ? "Extracted text with OCR and saved the note."
+                : "Extracted text and saved the note.",
+            "AiAnalyzeAndSave" => "Analyzed extracted text and saved the note.",
+            _ => "Saved the file without AI analysis."
+        };
+
     private async Task TrackAsync(Guid userId, string activityType, string entityType, Guid entityId)
     {
         try
@@ -680,3 +1023,26 @@ public record AnalyzeUploadResponse(
     string Summary,
     List<string> DetectedTopics,
     string Message);
+
+public record UploadMaterialResponse(
+    Guid NoteId,
+    string Title,
+    string ExtractionStatus,
+    int CharacterCount,
+    int AttachmentCount,
+    string? Warning,
+    bool AiUsed,
+    string? GenerationModeUsed,
+    bool? FromCache,
+    string Message);
+
+public record PostUploadExtractionResponse(
+    Guid NoteId,
+    string ExtractionStatus,
+    int CharacterCount,
+    string? Warning,
+    string Message);
+
+public record AnalyzeExistingRequest(
+    string? GenerationMode = "Auto",
+    string? SummaryDepth = "Balanced");

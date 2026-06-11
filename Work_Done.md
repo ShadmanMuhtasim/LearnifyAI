@@ -758,3 +758,51 @@ For production: Azure Key Vault or environment variables injected at deployment 
 - `git diff --check` - passed; only CRLF conversion warnings were printed.
 - Conflict marker scan - no markers found.
 - LocalOpenAI live runtime smoke was blocked because `http://127.0.0.1:8080/v1/models` was unreachable in this pass.
+
+## M11.1 - Unified Upload Workflow + Post-Upload Extraction
+
+- Added a unified material upload backend endpoint: `POST /api/notes/upload-material`.
+- Supported upload modes:
+  - `SaveOnly` stores the original attachment without AI analysis.
+  - `ExtractAndSave` extracts readable text from `.txt`, `.md`, `.docx`, and text-based PDFs before saving.
+  - `AiAnalyzeAndSave` extracts text first, then sends only extracted text to AI analysis.
+- Added post-upload recovery endpoints:
+  - `POST /api/notes/{noteId}/extract-attachment-text`
+  - `POST /api/notes/{noteId}/analyze-existing`
+- Added `IDocumentTextExtractor` and `IOcrTextExtractor` abstractions with local extraction for text/Markdown/DOCX/text-based PDF files.
+- Added an OCR placeholder service that fails clearly for scanned/image-only PDFs instead of pretending unsupported OCR works.
+- Updated Notes upload UI to use one unified workflow instead of separate direct text, simple PDF, and AI upload sections.
+- Updated Note Detail so file-only attachment notes show `Extract Text` and `Analyze Existing File` actions. Normal AI study tools remain disabled until readable text exists.
+- Preserved existing AI provider behavior: Gemini default remains `gemini-3.5-flash`, and Ollama/LocalOpenAI remain separate.
+- Added backend integration tests for unified upload auth, save-only no-AI behavior, PDF save-then-extract/analyze, and clean invalid-PDF failures.
+- Added frontend tests for unified upload, Notes modal wiring, and Note Detail post-upload extraction.
+
+### Verification - 2026-06-09
+
+- `dotnet build --no-restore` - passed with 0 warnings and 0 errors.
+- `dotnet test --no-restore` - passed, 59 backend tests.
+- `dotnet list package --vulnerable --include-transitive` - passed; no vulnerable packages reported.
+- `npm test -- --run` in `Learnify.Client` - passed, 13 files / 33 tests.
+- `npm run build` in `Learnify.Client` - passed.
+- `git diff --check` - passed; only CRLF conversion warnings were printed.
+- Conflict marker scan - no markers found.
+- Runtime smoke passed for fresh user registration, course creation, unified save-only upload, post-upload text extraction, frontend reachability, and analyze-existing against the configured provider.
+- Remaining gap: true OCR for scanned/image-only PDFs is still future work.
+## 2026-06-09 - Note Detail Free Local study generation wiring
+
+- Added mode-aware Note Detail generation for Summary, Flashcards, and Study Tips with Auto, AI, and Free Local options.
+- Wired `/api/ai/summarize`, `/api/ai/flashcards`, and `/api/ai/study-tips` through a central study generation service.
+- Added deterministic Free Local generation for summaries, flashcards, and study tips, including user-scoped local result caching.
+- Auto mode now falls back to Free Local on safe AI provider failures and returns a fallback notice.
+- AIProvider mode remains provider-only and does not silently fall back.
+- Extracted PDF text saved in note content can now be summarized, converted to flashcards, and used for study tips from Note Detail without Gemini, LocalOpenAI, Ollama, OpenAI, or Claude.
+- Added/updated backend integration tests for FreeLocal provider bypass, Auto fallback, AIProvider no-fallback errors, local cache behavior, and extracted PDF text.
+- Added/updated Note Detail frontend tests for the mode selector, FreeLocal payloads, fallback notices, provider errors, and placeholder extraction gating.
+
+Verification:
+- `dotnet build --no-restore`: passed after stopping the running `Learnify.Web` process that had locked build DLLs.
+- `dotnet test --no-restore`: passed, 68 backend tests.
+- `dotnet restore`: blocked by Windows sandbox setup failure; escalation retry was rejected by the approval usage gate.
+- `npm test -- --run`: blocked by Windows sandbox setup failure; escalation retry was rejected by the approval usage gate.
+- `npm run build`, `dotnet list package --vulnerable --include-transitive`, `git diff --check`, `git status --short`, and conflict grep were not run after the approval usage gate blocked further escalated verification.
+- Runtime smoke was not run because the same gate blocked starting/rerunning the full local app verification flow.

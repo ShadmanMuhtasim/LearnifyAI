@@ -17,7 +17,7 @@ public class AiController : ControllerBase
 {
     private static readonly string[] AllowedProviders = ["gemini", "openai", "claude", "ollama", "localopenai", "mock"];
 
-    private readonly IAiService _aiService;
+    private readonly IStudyGenerationService _studyGenerationService;
     private readonly UserAiSettingsStore _store;
     private readonly IUnitOfWork _unitOfWork;
     private readonly AiSettings _aiSettings;
@@ -26,7 +26,7 @@ public class AiController : ControllerBase
     private readonly IAnalyticsService _analyticsService;
 
     public AiController(
-        IAiService aiService,
+        IStudyGenerationService studyGenerationService,
         UserAiSettingsStore store,
         IUnitOfWork unitOfWork,
         IOptions<AiSettings> aiSettings,
@@ -34,7 +34,7 @@ public class AiController : ControllerBase
         ILogger<AiController> logger,
         IAnalyticsService analyticsService)
     {
-        _aiService = aiService;
+        _studyGenerationService = studyGenerationService;
         _store = store;
         _unitOfWork = unitOfWork;
         _aiSettings = aiSettings.Value;
@@ -276,9 +276,21 @@ public class AiController : ControllerBase
 
         try
         {
-            var summary = await _aiService.SummarizeNoteAsync(request.Content, cancellationToken);
+            var result = await _studyGenerationService.GenerateSummaryAsync(
+                GetCurrentUserId(),
+                request.NoteId,
+                request.Content,
+                request.GenerationMode,
+                cancellationToken);
             await TrackAsync("SummaryGenerated", "Note", Guid.TryParse(request.NoteId, out var noteId) ? noteId : null, cancellationToken);
-            return Ok(new SummarizeNoteResponse(request.NoteId, summary, DateTime.UtcNow));
+            return Ok(new SummarizeNoteResponse(
+                request.NoteId,
+                result.Summary ?? string.Empty,
+                result.GeneratedAt,
+                result.GenerationModeUsed,
+                result.ProviderUsed,
+                result.Notice,
+                result.FromCache));
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("Rate limit"))
         {
@@ -286,13 +298,17 @@ public class AiController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "AI provider failed while summarizing note '{NoteId}'", request.NoteId);
-            return StatusCode(502, new { success = false, message = ex.Message });
+            _logger.LogWarning(ex, "Study generation failed while summarizing note '{NoteId}'", request.NoteId);
+            return IsFreeLocalMode(request.GenerationMode)
+                ? BadRequest(new { success = false, message = $"Free Local generation failed: {ex.Message}" })
+                : StatusCode(502, new { success = false, message = ex.Message });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error summarizing note '{NoteId}'", request.NoteId);
-            return StatusCode(502, new { success = false, message = "AI provider failed while summarizing this note. Check the active provider settings and try again." });
+            return IsFreeLocalMode(request.GenerationMode)
+                ? BadRequest(new { success = false, message = "Free Local generation failed while summarizing this note." })
+                : StatusCode(502, new { success = false, message = "AI provider failed while summarizing this note. Check the active provider settings and try again." });
         }
     }
 
@@ -308,15 +324,24 @@ public class AiController : ControllerBase
 
         try
         {
-            var flashcards = await _aiService.GenerateFlashcardsAsync(
+            var result = await _studyGenerationService.GenerateFlashcardsAsync(
+                GetCurrentUserId(),
+                request.NoteId,
                 request.Content,
                 request.Count,
+                request.GenerationMode,
                 cancellationToken);
 
             var response = new FlashcardResponse(
                 request.NoteId,
-                flashcards.Select(f => new FlashcardItem(f.Question, f.Answer)).ToList(),
-                DateTime.UtcNow);
+                (result.Flashcards ?? Array.Empty<Learnify.Core.Models.FlashcardResult>())
+                    .Select(f => new FlashcardItem(f.Question, f.Answer))
+                    .ToList(),
+                result.GeneratedAt,
+                result.GenerationModeUsed,
+                result.ProviderUsed,
+                result.Notice,
+                result.FromCache);
 
             await TrackAsync("FlashcardsGenerated", "Note", Guid.TryParse(request.NoteId, out var noteId) ? noteId : null, cancellationToken);
             return Ok(response);
@@ -327,13 +352,17 @@ public class AiController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "AI provider failed while generating flashcards for note '{NoteId}'", request.NoteId);
-            return StatusCode(502, new { success = false, message = ex.Message });
+            _logger.LogWarning(ex, "Study generation failed while generating flashcards for note '{NoteId}'", request.NoteId);
+            return IsFreeLocalMode(request.GenerationMode)
+                ? BadRequest(new { success = false, message = $"Free Local generation failed: {ex.Message}" })
+                : StatusCode(502, new { success = false, message = ex.Message });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating flashcards for note '{NoteId}'", request.NoteId);
-            return StatusCode(502, new { success = false, message = "AI provider failed while generating flashcards. Check the active provider settings and try again." });
+            return IsFreeLocalMode(request.GenerationMode)
+                ? BadRequest(new { success = false, message = "Free Local generation failed while generating flashcards." })
+                : StatusCode(502, new { success = false, message = "AI provider failed while generating flashcards. Check the active provider settings and try again." });
         }
     }
 
@@ -349,9 +378,19 @@ public class AiController : ControllerBase
 
         try
         {
-            var tips = await _aiService.GetStudyTipsAsync(request.Topic, cancellationToken);
+            var result = await _studyGenerationService.GenerateStudyTipsAsync(
+                GetCurrentUserId(),
+                request.Topic,
+                request.GenerationMode,
+                cancellationToken);
             await TrackAsync("StudyTipsGenerated", null, null, cancellationToken);
-            return Ok(new StudyTipsResponse(tips, DateTime.UtcNow));
+            return Ok(new StudyTipsResponse(
+                result.Tips ?? string.Empty,
+                result.GeneratedAt,
+                result.GenerationModeUsed,
+                result.ProviderUsed,
+                result.Notice,
+                result.FromCache));
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("Rate limit"))
         {
@@ -359,15 +398,24 @@ public class AiController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            _logger.LogWarning(ex, "AI provider failed while generating study tips for topic '{Topic}'", request.Topic);
-            return StatusCode(502, new { success = false, message = ex.Message });
+            _logger.LogWarning(ex, "Study generation failed while generating study tips for topic '{Topic}'", request.Topic);
+            return IsFreeLocalMode(request.GenerationMode)
+                ? BadRequest(new { success = false, message = $"Free Local generation failed: {ex.Message}" })
+                : StatusCode(502, new { success = false, message = ex.Message });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error generating study tips for topic '{Topic}'", request.Topic);
-            return StatusCode(502, new { success = false, message = "AI provider failed while generating study tips. Check the active provider settings and try again." });
+            return IsFreeLocalMode(request.GenerationMode)
+                ? BadRequest(new { success = false, message = "Free Local generation failed while generating study tips." })
+                : StatusCode(502, new { success = false, message = "AI provider failed while generating study tips. Check the active provider settings and try again." });
         }
     }
+
+    private static bool IsFreeLocalMode(string? generationMode)
+        => generationMode?.Trim().Equals("FreeLocal", StringComparison.OrdinalIgnoreCase) == true ||
+           generationMode?.Trim().Equals("Free Local", StringComparison.OrdinalIgnoreCase) == true ||
+           generationMode?.Trim().Equals("Local", StringComparison.OrdinalIgnoreCase) == true;
 
     private static string NormalizeProviderName(string provider)
     {

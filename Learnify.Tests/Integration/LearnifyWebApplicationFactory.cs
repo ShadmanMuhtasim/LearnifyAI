@@ -17,12 +17,23 @@ public sealed class LearnifyWebApplicationFactory : WebApplicationFactory<global
 {
     private readonly string _databaseName = $"learnify-tests-{Guid.NewGuid()}";
     private int _analyzeDocumentCallCount;
+    private int _summaryCallCount;
+    private int _flashcardCallCount;
+    private int _studyTipsCallCount;
 
     public int AnalyzeDocumentCallCount => _analyzeDocumentCallCount;
+    public int SummaryCallCount => _summaryCallCount;
+    public int FlashcardCallCount => _flashcardCallCount;
+    public int StudyTipsCallCount => _studyTipsCallCount;
+    public bool ShouldFailStudyGeneration { get; set; }
 
     public void ResetAiCallCounts()
     {
         _analyzeDocumentCallCount = 0;
+        _summaryCallCount = 0;
+        _flashcardCallCount = 0;
+        _studyTipsCallCount = 0;
+        ShouldFailStudyGeneration = false;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -76,13 +87,27 @@ public sealed class LearnifyWebApplicationFactory : WebApplicationFactory<global
         }
 
         public Task<string> SummarizeNoteAsync(string content, CancellationToken ct = default)
-            => Task.FromResult("Mocked integration summary.");
+        {
+            Interlocked.Increment(ref _factory._summaryCallCount);
+            if (_factory.ShouldFailStudyGeneration)
+            {
+                throw new InvalidOperationException("AI_PROVIDER_UNAVAILABLE: mocked provider failure.");
+            }
+
+            return Task.FromResult("Mocked integration summary.");
+        }
 
         public Task<IReadOnlyList<FlashcardResult>> GenerateFlashcardsAsync(
             string content,
             int count = 5,
             CancellationToken ct = default)
         {
+            Interlocked.Increment(ref _factory._flashcardCallCount);
+            if (_factory.ShouldFailStudyGeneration)
+            {
+                throw new InvalidOperationException("AI_PROVIDER_UNAVAILABLE: mocked provider failure.");
+            }
+
             IReadOnlyList<FlashcardResult> cards = Enumerable.Range(1, Math.Max(1, count))
                 .Select(i => new FlashcardResult($"Question {i}?", $"Answer {i}"))
                 .ToList();
@@ -131,7 +156,15 @@ public sealed class LearnifyWebApplicationFactory : WebApplicationFactory<global
         }
 
         public Task<string> GetStudyTipsAsync(string topic, CancellationToken ct = default)
-            => Task.FromResult("Mocked study tips.");
+        {
+            Interlocked.Increment(ref _factory._studyTipsCallCount);
+            if (_factory.ShouldFailStudyGeneration)
+            {
+                throw new InvalidOperationException("AI_PROVIDER_UNAVAILABLE: mocked provider failure.");
+            }
+
+            return Task.FromResult("Mocked study tips.");
+        }
 
         public Task<NoteAnalysisResult> AnalyzeDocumentAsync(
             string content,

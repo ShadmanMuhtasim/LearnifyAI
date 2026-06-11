@@ -5,20 +5,20 @@ import SmartUpload from './SmartUpload';
 
 const mocks = vi.hoisted(() => ({
   post: vi.fn(),
-  put: vi.fn(),
 }));
 
 vi.mock('../../services/api', () => ({
   default: {
     post: mocks.post,
-    put: mocks.put,
   },
 }));
+
+const courses = [{ id: 'course-1', title: 'Data Structures' }];
 
 const renderSmartUpload = () =>
   render(
     <MemoryRouter>
-      <SmartUpload />
+      <SmartUpload courses={courses} />
     </MemoryRouter>
   );
 
@@ -36,59 +36,73 @@ describe('SmartUpload', () => {
         success: true,
         data: {
           noteId: 'note-1',
-          courseId: 'course-1',
-          courseName: 'Extracted PDF Course',
-          courseWasCreated: true,
-          summary: 'Summary from extracted text.',
-          detectedTopics: ['PDF Topic'],
-          message: 'Saved',
+          title: 'Workflow Note',
+          extractionStatus: 'Extracted',
+          characterCount: 42,
+          attachmentCount: 1,
+          warning: null,
+          aiUsed: false,
+          generationModeUsed: null,
+          fromCache: false,
+          message: 'Extracted text and saved the note.',
         },
       },
     });
   });
 
-  it('accepts text-based PDFs and shows the supported PDF copy', () => {
+  it('accepts supported material files and shows the unified mode choices', () => {
     const { container } = renderSmartUpload();
     const input = container.querySelector('input[type="file"]') as HTMLInputElement;
 
-    expect(input.accept).toBe('.txt,.md,.pdf');
-    expect(screen.getByText(/Supports \.txt, \.md, and text-based \.pdf files/i)).toBeInTheDocument();
+    expect(input.accept).toContain('.txt');
+    expect(input.accept).toContain('.md');
+    expect(input.accept).toContain('.pdf');
+    expect(input.accept).toContain('.docx');
+    expect(screen.getByText(/Supports \.txt, \.md, \.pdf, and \.docx/i)).toBeInTheDocument();
+    expect(screen.getAllByText('Save only').length).toBeGreaterThan(0);
+    expect(screen.getByText('Extract text')).toBeInTheDocument();
+    expect(screen.getByText('Analyze with AI')).toBeInTheDocument();
 
     selectFile(container, new File(['%PDF tiny fixture'], 'lecture.pdf', { type: 'application/pdf' }));
 
     expect(screen.getByText('lecture.pdf')).toBeInTheDocument();
-    expect(screen.getByText(/17 B\s+•\s+PDF/i)).toBeInTheDocument();
   });
 
-  it('shows backend PDF extraction errors clearly', async () => {
+  it('uploads selected files through upload-material as multipart form data', async () => {
+    const { container } = renderSmartUpload();
+
+    selectFile(container, new File(['# Notes'], 'notes.md', { type: 'text/markdown' }));
+    fireEvent.change(screen.getByLabelText(/Course/i), { target: { value: 'course-1' } });
+    fireEvent.click(screen.getAllByRole('button', { name: /Extract text/i })[0]);
+    const extractButtons = screen.getAllByRole('button', { name: /Extract text/i });
+    fireEvent.click(extractButtons[extractButtons.length - 1]);
+
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
+      '/api/notes/upload-material',
+      expect.any(FormData),
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    ));
+    expect(await screen.findByText(/Extracted text and saved the note/i)).toBeInTheDocument();
+  });
+
+  it('shows backend extraction errors clearly', async () => {
     mocks.post.mockRejectedValueOnce({
       response: {
         status: 400,
         data: {
-          message:
-            'Could not extract readable text from this PDF. Scanned/image-only PDFs are not supported yet. Please upload a text-based PDF, .txt, or .md file.',
+          message: 'This PDF appears to be scanned or image-only. OCR is not available or could not extract readable text.',
         },
       },
     });
     const { container } = renderSmartUpload();
 
     selectFile(container, new File(['not really a pdf'], 'scan.pdf', { type: 'application/pdf' }));
-    fireEvent.click(screen.getByRole('button', { name: /Analyze & Save/i }));
+    fireEvent.change(screen.getByLabelText(/Course/i), { target: { value: 'course-1' } });
+    fireEvent.click(screen.getAllByRole('button', { name: /Extract text/i })[0]);
+    const extractButtons = screen.getAllByRole('button', { name: /Extract text/i });
+    fireEvent.click(extractButtons[extractButtons.length - 1]);
 
-    expect(await screen.findByText(/Could not extract readable text from this PDF/i)).toBeInTheDocument();
+    expect(await screen.findByText(/OCR is not available/i)).toBeInTheDocument();
     expect(screen.queryByText(/Failed to analyze and save the document/i)).not.toBeInTheDocument();
-  });
-
-  it('keeps text and markdown files supported', async () => {
-    const { container } = renderSmartUpload();
-
-    selectFile(container, new File(['# Notes'], 'notes.md', { type: 'text/markdown' }));
-    fireEvent.click(screen.getByRole('button', { name: /Analyze & Save/i }));
-
-    await waitFor(() => expect(mocks.post).toHaveBeenCalled());
-    expect(mocks.post.mock.calls[0][1]).toMatchObject({
-      fileName: 'notes.md',
-      fileType: 'text',
-    });
   });
 });
