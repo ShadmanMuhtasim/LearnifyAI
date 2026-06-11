@@ -93,4 +93,44 @@ describe('NotesList upload modal', () => {
     ));
     expect(mocks.post).not.toHaveBeenCalledWith('/api/notes/analyze-upload', expect.anything());
   });
+
+  it('renders paged preview cards without requiring full note content', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (url === '/api/notes') {
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: {
+              items: [
+                {
+                  id: 'note-1',
+                  title: 'Preview Note',
+                  preview: 'Short preview from the backend.',
+                  courseId: 'course-1',
+                  courseTitle: 'Data Structures',
+                  hasAttachments: true,
+                  extractionStatus: 'Extracted',
+                  createdAt: '2026-06-01T00:00:00Z',
+                },
+              ],
+              page: 1,
+              pageSize: 20,
+              totalCount: 1,
+              totalPages: 1,
+              hasPreviousPage: false,
+              hasNextPage: false,
+            },
+          },
+        });
+      }
+
+      return Promise.reject(new Error(`Unhandled GET ${url}`));
+    });
+
+    renderNotesList();
+
+    expect(await screen.findByText('Preview Note')).toBeInTheDocument();
+    expect(screen.getByText('Short preview from the backend.')).toBeInTheDocument();
+    expect(screen.queryByText(/UNIQUE_FULL_CONTENT_SHOULD_NOT_BE_REQUIRED/i)).not.toBeInTheDocument();
+  });
 });

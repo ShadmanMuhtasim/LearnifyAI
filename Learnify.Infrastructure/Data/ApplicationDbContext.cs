@@ -89,6 +89,7 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<Course>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.UserId);
             entity.Property(e => e.Title).IsRequired().HasMaxLength(300);
             entity.Property(e => e.Description).HasMaxLength(2000);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
@@ -109,6 +110,9 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<Note>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.CourseId);
+            entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => new { e.CourseId, e.CreatedAt });
             entity.Property(e => e.Content).IsRequired();
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
             entity.Property(e => e.AttachmentName).HasMaxLength(500);
@@ -125,9 +129,11 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<NoteAttachment>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.NoteId);
             entity.Property(e => e.Name).IsRequired().HasMaxLength(500);
             entity.Property(e => e.Type).IsRequired().HasMaxLength(200);
             entity.Property(e => e.Base64).IsRequired();
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
             entity.HasOne(e => e.Note)
                   .WithMany(e => e.Attachments)
                   .HasForeignKey(e => e.NoteId)
@@ -152,6 +158,7 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<Quiz>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.UserId, e.CreatedAt });
             entity.Property(e => e.Title).IsRequired().HasMaxLength(300);
             entity.Property(e => e.Description).HasMaxLength(1000);
             entity.Property(e => e.Difficulty).IsRequired().HasMaxLength(50);
@@ -184,6 +191,7 @@ public class ApplicationDbContext : DbContext
         modelBuilder.Entity<QuizAttempt>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.UserId, e.CreatedAt });
             entity.Property(e => e.Percentage).HasPrecision(5, 2);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
             entity.Property(e => e.StartedAt).HasDefaultValueSql("GETUTCDATE()");

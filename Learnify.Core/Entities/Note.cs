@@ -9,6 +9,8 @@ public class NoteAttachment
     public string Name { get; set; } = string.Empty;
     public string Type { get; set; } = string.Empty;
     public string Base64 { get; set; } = string.Empty;
+    public long SizeBytes { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public Guid NoteId { get; set; }
     public virtual Note Note { get; set; } = null!;
 }

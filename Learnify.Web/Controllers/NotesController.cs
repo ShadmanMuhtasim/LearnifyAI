@@ -5,8 +5,10 @@ using Learnify.Application.Interfaces;
 using Learnify.Core.Entities;
 using Learnify.Core.Interfaces;
 using Learnify.Core.Models;
+using Learnify.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text;
 
@@ -26,6 +28,7 @@ public class NotesController : ControllerBase
     private readonly IUnitOfWork _unitOfWork;
     private readonly IMapper _mapper;
     private readonly ILogger<NotesController> _logger;
+    private readonly ApplicationDbContext _context;
     private readonly IPdfTextExtractor _pdfTextExtractor;
     private readonly IDocumentTextExtractor _documentTextExtractor;
     private readonly IAnalyticsService _analyticsService;
@@ -34,6 +37,7 @@ public class NotesController : ControllerBase
         IUnitOfWork unitOfWork,
         IMapper mapper,
         ILogger<NotesController> logger,
+        ApplicationDbContext context,
         IPdfTextExtractor pdfTextExtractor,
         IDocumentTextExtractor documentTextExtractor,
         IAnalyticsService analyticsService)
@@ -41,6 +45,7 @@ public class NotesController : ControllerBase
         _unitOfWork = unitOfWork;
         _mapper = mapper;
         _logger = logger;
+        _context = context;
         _pdfTextExtractor = pdfTextExtractor;
         _documentTextExtractor = documentTextExtractor;
         _analyticsService = analyticsService;
@@ -51,74 +56,116 @@ public class NotesController : ControllerBase
 
     // GET: api/notes
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<IEnumerable<NoteDTO>>>> GetNotes()
+    public async Task<ActionResult<ApiResponse<PagedResultDTO<NoteListItemDTO>>>> GetNotes(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] Guid? courseId = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
             var userId = GetUserId();
-            var notes = await _unitOfWork.Notes.FindByUserIdAsync(userId);
-            var noteList = notes.ToList();
-            var noteDtos = noteList.Select(note => new NoteDTO
+            var safePage = Math.Max(1, page);
+            var safePageSize = Math.Clamp(pageSize, 1, 50);
+
+            var query = _context.Notes
+                .AsNoTracking()
+                .Where(note => note.Course.UserId == userId);
+
+            if (courseId.HasValue)
+            {
+                query = query.Where(note => note.CourseId == courseId.Value);
+            }
+
+            var totalCount = await query.CountAsync(cancellationToken);
+            var rows = await query
+                .OrderByDescending(note => note.CreatedAt)
+                .Skip((safePage - 1) * safePageSize)
+                .Take(safePageSize)
+                .Select(note => new
+                {
+                    note.Id,
+                    note.Content,
+                    note.CourseId,
+                    CourseTitle = note.Course.Title,
+                    HasAttachments = note.Attachments.Any(),
+                    note.CreatedAt
+                })
+                .ToListAsync(cancellationToken);
+
+            var noteDtos = rows.Select(note => new NoteListItemDTO
             {
                 Id = note.Id,
-                Content = note.Content,
+                Title = ExtractTitle(note.Content),
+                Preview = BuildPreview(note.Content, 220),
                 CourseId = note.CourseId,
-                CourseTitle = note.Course?.Title,
-                Attachments = note.Attachments.Select(a => new NoteAttachmentDTO
-                {
-                    Id = a.Id,
-                    Name = a.Name,
-                    Type = a.Type,
-                    Base64 = a.Base64
-                }).ToList(),
+                CourseTitle = note.CourseTitle,
+                HasAttachments = note.HasAttachments,
+                ExtractionStatus = GetExtractionStatus(note.Content, note.HasAttachments),
                 CreatedAt = note.CreatedAt
             }).ToList();
 
-            return Ok(ApiResponse<IEnumerable<NoteDTO>>.Ok(noteDtos, "Notes retrieved successfully."));
+            var result = new PagedResultDTO<NoteListItemDTO>
+            {
+                Items = noteDtos,
+                Page = safePage,
+                PageSize = safePageSize,
+                TotalCount = totalCount,
+                TotalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)safePageSize)
+            };
+
+            return Ok(ApiResponse<PagedResultDTO<NoteListItemDTO>>.Ok(result, "Notes retrieved successfully."));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving notes.");
-            return StatusCode(500, ApiResponse<IEnumerable<NoteDTO>>.BadRequest("An error occurred while retrieving notes."));
+            return StatusCode(500, ApiResponse<PagedResultDTO<NoteListItemDTO>>.BadRequest("An error occurred while retrieving notes."));
         }
     }
 
     // GET: api/notes/{id}
     [HttpGet("{id:guid}")]
-    public async Task<ActionResult<ApiResponse<NoteDTO>>> GetNote(Guid id)
+    public async Task<ActionResult<ApiResponse<NoteDetailDTO>>> GetNote(Guid id, CancellationToken cancellationToken)
     {
         try
         {
             var userId = GetUserId();
-            var notes = await _unitOfWork.Notes.FindByUserIdAsync(userId);
-            var noteList = notes.ToList();
-            var note = noteList.FirstOrDefault(n => n.Id == id);
-
-            if (note == null)
-                return NotFound(ApiResponse<NoteDTO>.NotFound($"Note with ID {id} not found."));
-
-            var noteDto = new NoteDTO
-            {
-                Id = note.Id,
-                Content = note.Content,
-                CourseId = note.CourseId,
-                CourseTitle = note.Course?.Title,
-                Attachments = note.Attachments.Select(a => new NoteAttachmentDTO
+            var noteDto = await _context.Notes
+                .AsNoTracking()
+                .Where(note => note.Id == id && note.Course.UserId == userId)
+                .Select(note => new NoteDetailDTO
                 {
-                    Id = a.Id,
-                    Name = a.Name,
-                    Type = a.Type,
-                    Base64 = a.Base64
-                }).ToList(),
-                CreatedAt = note.CreatedAt
-            };
+                    Id = note.Id,
+                    Title = "",
+                    Content = note.Content,
+                    CourseId = note.CourseId,
+                    CourseTitle = note.Course.Title,
+                    CreatedAt = note.CreatedAt,
+                    Attachments = note.Attachments
+                        .OrderBy(attachment => attachment.CreatedAt)
+                        .Select(attachment => new NoteAttachmentMetadataDTO
+                        {
+                            Id = attachment.Id,
+                            Name = attachment.Name,
+                            Type = attachment.Type,
+                            SizeBytes = attachment.SizeBytes,
+                            CreatedAt = attachment.CreatedAt
+                        })
+                        .ToList()
+                })
+                .FirstOrDefaultAsync(cancellationToken);
 
-            return Ok(ApiResponse<NoteDTO>.Ok(noteDto, "Note retrieved successfully."));
+            if (noteDto == null)
+                return NotFound(ApiResponse<NoteDetailDTO>.NotFound($"Note with ID {id} not found."));
+
+            noteDto.Title = ExtractTitle(noteDto.Content);
+
+            return Ok(ApiResponse<NoteDetailDTO>.Ok(noteDto, "Note retrieved successfully."));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error retrieving note with ID {NoteId}", id);
-            return StatusCode(500, ApiResponse<NoteDTO>.BadRequest("An error occurred while retrieving the note."));
+            return StatusCode(500, ApiResponse<NoteDetailDTO>.BadRequest("An error occurred while retrieving the note."));
         }
     }
 
@@ -152,7 +199,9 @@ public class NotesController : ControllerBase
                     Id = Guid.NewGuid(),
                     Name = attachment.Name,
                     Type = attachment.Type,
-                    Base64 = attachment.Base64
+                    Base64 = attachment.Base64,
+                    SizeBytes = attachment.SizeBytes > 0 ? attachment.SizeBytes : EstimateBase64SizeBytes(attachment.Base64),
+                    CreatedAt = DateTime.UtcNow
                 });
             }
 
@@ -171,7 +220,9 @@ public class NotesController : ControllerBase
                     Id = a.Id,
                     Name = a.Name,
                     Type = a.Type,
-                    Base64 = a.Base64
+                    Base64 = a.Base64,
+                    SizeBytes = a.SizeBytes,
+                    CreatedAt = a.CreatedAt
                 }).ToList(),
                 CreatedAt = note.CreatedAt
             };
@@ -193,9 +244,10 @@ public class NotesController : ControllerBase
         try
         {
             var userId = GetUserId();
-            var notes = await _unitOfWork.Notes.FindByUserIdAsync(userId);
-            var noteList = notes.ToList();
-            var note = noteList.FirstOrDefault(n => n.Id == id);
+            var note = await _context.Notes
+                .Include(n => n.Course)
+                .Include(n => n.Attachments)
+                .FirstOrDefaultAsync(n => n.Id == id && n.Course.UserId == userId);
 
             if (note == null)
                 return NotFound(ApiResponse<NoteDTO>.NotFound($"Note with ID {id} not found."));
@@ -229,7 +281,13 @@ public class NotesController : ControllerBase
                     // Existing attachment — update in place
                     existing.Name = dtoAttachment.Name;
                     existing.Type = dtoAttachment.Type;
-                    existing.Base64 = dtoAttachment.Base64;
+                    if (!string.IsNullOrWhiteSpace(dtoAttachment.Base64))
+                    {
+                        existing.Base64 = dtoAttachment.Base64;
+                        existing.SizeBytes = dtoAttachment.SizeBytes > 0
+                            ? dtoAttachment.SizeBytes
+                            : EstimateBase64SizeBytes(dtoAttachment.Base64);
+                    }
                 }
                 else
                 {
@@ -239,7 +297,11 @@ public class NotesController : ControllerBase
                         Id = dtoAttachment.Id,
                         Name = dtoAttachment.Name,
                         Type = dtoAttachment.Type,
-                        Base64 = dtoAttachment.Base64
+                        Base64 = dtoAttachment.Base64,
+                        SizeBytes = dtoAttachment.SizeBytes > 0
+                            ? dtoAttachment.SizeBytes
+                            : EstimateBase64SizeBytes(dtoAttachment.Base64),
+                        CreatedAt = DateTime.UtcNow
                     });
                 }
             }
@@ -257,7 +319,9 @@ public class NotesController : ControllerBase
                     Id = a.Id,
                     Name = a.Name,
                     Type = a.Type,
-                    Base64 = a.Base64
+                    Base64 = a.Base64,
+                    SizeBytes = a.SizeBytes,
+                    CreatedAt = a.CreatedAt
                 }).ToList(),
                 CreatedAt = note.CreatedAt
             };
@@ -304,9 +368,10 @@ public class NotesController : ControllerBase
         try
         {
             var userId = GetUserId();
-            var notes = await _unitOfWork.Notes.FindByUserIdAsync(userId);
-            var noteList = notes.ToList();
-            var note = noteList.FirstOrDefault(n => n.Id == noteId);
+            var note = await _context.Notes
+                .Include(n => n.Course)
+                .Include(n => n.Attachments)
+                .FirstOrDefaultAsync(n => n.Id == noteId && n.Course.UserId == userId);
 
             if (note == null)
                 return NotFound(ApiResponse<bool>.NotFound($"Note with ID {noteId} not found."));
@@ -325,6 +390,43 @@ public class NotesController : ControllerBase
             _logger.LogError(ex, "Error deleting attachment from note {NoteId}", noteId);
             return StatusCode(500, ApiResponse<bool>.BadRequest("An error occurred while deleting the attachment."));
         }
+    }
+
+    // GET: api/notes/{noteId}/attachments/{attachmentId}/download
+    [HttpGet("{noteId:guid}/attachments/{attachmentId:guid}/download")]
+    public async Task<IActionResult> DownloadAttachment(
+        Guid noteId,
+        Guid attachmentId,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetUserId();
+        var attachment = await _context.NoteAttachments
+            .AsNoTracking()
+            .Where(a => a.Id == attachmentId && a.NoteId == noteId && a.Note.Course.UserId == userId)
+            .Select(a => new
+            {
+                a.Name,
+                a.Type,
+                a.Base64
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (attachment == null)
+        {
+            return NotFound(ApiResponse<bool>.NotFound("Attachment not found."));
+        }
+
+        byte[] bytes;
+        try
+        {
+            bytes = Convert.FromBase64String(attachment.Base64);
+        }
+        catch (FormatException)
+        {
+            return BadRequest(ApiResponse<bool>.BadRequest("Attachment content is invalid."));
+        }
+
+        return File(bytes, attachment.Type, attachment.Name);
     }
 
     // POST: api/notes/upload
@@ -450,7 +552,9 @@ public class NotesController : ControllerBase
                 Id = Guid.NewGuid(),
                 Name = Path.GetFileName(file.FileName),
                 Type = contentType,
-                Base64 = base64
+                Base64 = base64,
+                SizeBytes = file.Length,
+                CreatedAt = DateTime.UtcNow
             };
 
             var note = new Note
@@ -477,7 +581,9 @@ public class NotesController : ControllerBase
                     Id = a.Id,
                     Name = a.Name,
                     Type = a.Type,
-                    Base64 = a.Base64
+                    Base64 = a.Base64,
+                    SizeBytes = a.SizeBytes,
+                    CreatedAt = a.CreatedAt
                 }).ToList(),
                 CreatedAt = note.CreatedAt
             };
@@ -817,7 +923,9 @@ public class NotesController : ControllerBase
                         Id = Guid.NewGuid(),
                         Name = request.FileName,
                         Type = request.FileType,
-                        Base64 = request.FileBase64
+                        Base64 = request.FileBase64,
+                        SizeBytes = fileBytes.LongLength,
+                        CreatedAt = DateTime.UtcNow
                     }
                 }
             };
@@ -892,8 +1000,10 @@ public class NotesController : ControllerBase
     private async Task<Note?> GetOwnedNoteAsync(Guid noteId)
     {
         var userId = GetUserId();
-        var notes = await _unitOfWork.Notes.FindByUserIdAsync(userId);
-        return notes.FirstOrDefault(note => note.Id == noteId);
+        return await _context.Notes
+            .Include(note => note.Course)
+            .Include(note => note.Attachments)
+            .FirstOrDefaultAsync(note => note.Id == noteId && note.Course.UserId == userId);
     }
 
     private async Task<DocumentTextExtractionResult> ExtractFirstAttachmentAsync(
@@ -924,7 +1034,9 @@ public class NotesController : ControllerBase
             Id = Guid.NewGuid(),
             Name = Path.GetFileName(file.FileName),
             Type = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
-            Base64 = Convert.ToBase64String(fileBytes)
+            Base64 = Convert.ToBase64String(fileBytes),
+            SizeBytes = fileBytes.LongLength,
+            CreatedAt = DateTime.UtcNow
         };
 
     private static string NormalizeUploadMode(string mode) =>
@@ -995,6 +1107,75 @@ public class NotesController : ControllerBase
             "AiAnalyzeAndSave" => "Analyzed extracted text and saved the note.",
             _ => "Saved the file without AI analysis."
         };
+
+    private static string ExtractTitle(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return "Untitled Note";
+        }
+
+        var firstMeaningfulLine = content
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault(line => !line.StartsWith("## ", StringComparison.Ordinal));
+
+        if (string.IsNullOrWhiteSpace(firstMeaningfulLine))
+        {
+            return "Untitled Note";
+        }
+
+        var title = firstMeaningfulLine.Trim().TrimStart('#').Trim();
+        return string.IsNullOrWhiteSpace(title)
+            ? "Untitled Note"
+            : title.Length <= 100 ? title : $"{title[..100]}...";
+    }
+
+    private static string BuildPreview(string content, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return string.Empty;
+        }
+
+        var compact = string.Join(
+            " ",
+            content.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Trim();
+
+        return compact.Length <= maxLength ? compact : $"{compact[..maxLength]}...";
+    }
+
+    private static string GetExtractionStatus(string content, bool hasAttachments)
+    {
+        if (IsPlaceholderContent(content) && hasAttachments)
+        {
+            return "FileOnly";
+        }
+
+        if (content.Contains("## AI Summary", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Analyzed";
+        }
+
+        if (content.Contains("## Extracted Text", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Extracted";
+        }
+
+        return string.IsNullOrWhiteSpace(content) ? "Empty" : "TextReady";
+    }
+
+    private static long EstimateBase64SizeBytes(string base64)
+    {
+        if (string.IsNullOrWhiteSpace(base64))
+        {
+            return 0;
+        }
+
+        var padding = base64.EndsWith("==", StringComparison.Ordinal) ? 2 :
+            base64.EndsWith("=", StringComparison.Ordinal) ? 1 : 0;
+        return Math.Max(0, (base64.Length * 3L / 4L) - padding);
+    }
 
     private async Task TrackAsync(Guid userId, string activityType, string entityType, Guid entityId)
     {

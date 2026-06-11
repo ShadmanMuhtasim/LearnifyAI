@@ -806,3 +806,43 @@ Verification:
 - `npm test -- --run`: blocked by Windows sandbox setup failure; escalation retry was rejected by the approval usage gate.
 - `npm run build`, `dotnet list package --vulnerable --include-transitive`, `git diff --check`, `git status --short`, and conflict grep were not run after the approval usage gate blocked further escalated verification.
 - Runtime smoke was not run because the same gate blocked starting/rerunning the full local app verification flow.
+
+## M11.2 - Note Loading Performance + Scalability Hardening
+
+- Root cause found: Note Detail loaded every note for the current user through `FindByUserIdAsync`, included full attachment rows, and returned attachment `Base64` in normal detail/list responses. Notes List also loaded full note content and attachment bytes for every note card.
+- Replaced Note Detail read path with an optimized, user-scoped `AsNoTracking` projection that returns note metadata/content plus attachment metadata only.
+- Replaced Notes List read path with paged preview DTOs:
+  - default `pageSize` 20
+  - max `pageSize` 50
+  - preview text instead of full note content
+  - attachment/extraction status flags without blob/base64 loading
+- Added protected attachment streaming endpoint:
+  - `GET /api/notes/{noteId}/attachments/{attachmentId}/download`
+  - enforces note ownership before reading attachment bytes.
+- Added attachment metadata fields:
+  - `SizeBytes`
+  - `CreatedAt`
+- Added EF migration `AddPerformanceIndexes` with attachment metadata columns and targeted indexes for note, quiz, and quiz-attempt hot paths.
+- Updated Note Detail frontend to:
+  - render a loading state immediately
+  - load note content independently of secondary AI actions
+  - use request cancellation on navigation
+  - memoize large-content paragraph splitting
+  - preserve M11.1 extract/analyze-existing and Auto/AI/Free Local generation controls
+  - download persisted attachments from the protected endpoint instead of embedding base64.
+- Updated Notes List frontend to use paged preview responses and simple Previous/Next paging.
+- Updated Quizzes note picker to consume the new paged note preview response.
+- Kept M11.1 unified upload, extraction, analyze-existing, Free Local generation, Gemini default, and Ollama/LocalOpenAI separation intact.
+
+### Verification - 2026-06-12
+
+- `dotnet build --no-restore` - passed.
+- `dotnet test --no-restore` - passed, 73 backend tests.
+- `dotnet list package --vulnerable --include-transitive` - passed; no vulnerable packages reported.
+- `npm test -- --run` in `Learnify.Client` - passed, 13 files / 40 tests.
+- `npm run build` in `Learnify.Client` - passed.
+- `git diff --check` - passed; only CRLF conversion warnings were printed.
+- Conflict marker scan - no markers found.
+- Runtime smoke passed for fresh user registration, course creation, text note detail load, save-only text-based PDF upload, metadata-only detail response, post-upload extraction, Free Local summary/flashcards/study tips, paged notes list, and frontend route reachability.
+- Local optimized Note Detail API timing in smoke: about 48 ms for the text note detail request.
+- Remaining scaling caveats: true production 1000+ usage still needs object storage for files, background jobs for heavy AI/OCR work, rate limits, monitoring, and production hosting/database sizing.

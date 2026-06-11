@@ -8,10 +8,15 @@ import { AppButton, Badge, Card, EmptyState, ErrorState, LoadingState, PageHeade
 interface Note {
   id: string;
   title: string;
-  content: string;
+  preview: string;
+  content?: string;
   courseId: string;
   courseTitle?: string;
+  courseName?: string;
+  hasAttachments?: boolean;
+  extractionStatus?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 interface CourseOption {
@@ -21,6 +26,16 @@ interface CourseOption {
 
 const FILE_ONLY_PDF_CONTENT =
   'This PDF was uploaded without text extraction. Use AI Analyze on a text-based PDF or upload .txt/.md content to generate AI study tools.';
+
+interface PagedNotesResponse {
+  items: Note[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+}
 
 export default function NotesList() {
   const { isAuthenticated } = useAuthStore();
@@ -36,15 +51,35 @@ export default function NotesList() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [courseFilter, setCourseFilter] = useState('All notes');
+  const [page, setPage] = useState(1);
+  const [pageInfo, setPageInfo] = useState({ totalCount: 0, totalPages: 0, hasPreviousPage: false, hasNextPage: false });
 
-  const fetchNotes = async () => {
+  const fetchNotes = async (nextPage = page) => {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await apiClient.get<any>('/api/notes');
+      const response = await apiClient.get<any>('/api/notes', {
+        params: {
+          page: nextPage,
+          pageSize: 20,
+        },
+      });
       if (response.data.success) {
-        setNotes(response.data.data);
+        const data = response.data.data as PagedNotesResponse | Note[];
+        if (Array.isArray(data)) {
+          setNotes(data);
+          setPageInfo({ totalCount: data.length, totalPages: 1, hasPreviousPage: false, hasNextPage: false });
+        } else {
+          setNotes(data.items ?? []);
+          setPage(data.page);
+          setPageInfo({
+            totalCount: data.totalCount,
+            totalPages: data.totalPages,
+            hasPreviousPage: data.hasPreviousPage,
+            hasNextPage: data.hasNextPage,
+          });
+        }
       } else {
         setError(response.data.errors?.join(', ') || 'Failed to fetch notes');
       }
@@ -137,17 +172,17 @@ export default function NotesList() {
   }, [isAuthenticated]);
 
   const courseNames = useMemo(() => {
-    const names = new Set(notes.map((note) => note.courseTitle || note.courseId).filter(Boolean));
+    const names = new Set(notes.map((note) => note.courseTitle || note.courseName || note.courseId).filter(Boolean));
     return ['All notes', ...Array.from(names)];
   }, [notes]);
 
   const visibleNotes = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return notes
-      .filter((note) => courseFilter === 'All notes' || (note.courseTitle || note.courseId) === courseFilter)
+      .filter((note) => courseFilter === 'All notes' || (note.courseTitle || note.courseName || note.courseId) === courseFilter)
       .filter((note) => {
         if (!normalizedQuery) return true;
-        return `${note.title || ''} ${note.content} ${note.courseTitle || ''}`.toLowerCase().includes(normalizedQuery);
+        return `${note.title || ''} ${note.preview || note.content || ''} ${note.courseTitle || note.courseName || ''}`.toLowerCase().includes(normalizedQuery);
       });
   }, [courseFilter, notes, query]);
 
@@ -232,8 +267,9 @@ export default function NotesList() {
           ) : (
             <div className="grid grid-2">
               {visibleNotes.map((note) => {
-                const isFileOnlyPdf = note.content.trim() === FILE_ONLY_PDF_CONTENT;
-                const hasAiContent = note.content.trim().length > 0 && !isFileOnlyPdf;
+                const previewText = note.preview ?? note.content ?? '';
+                const isFileOnlyPdf = previewText.trim() === FILE_ONLY_PDF_CONTENT || note.extractionStatus === 'FileOnly';
+                const hasAiContent = previewText.trim().length > 0 && !isFileOnlyPdf;
                 return (
                   <Link to={`/notes/${note.id}`} key={note.id} style={{ textDecoration: 'none' }}>
                     <Card className="stack">
@@ -241,10 +277,10 @@ export default function NotesList() {
                         <h2 style={{ fontSize: '1.1rem' }}>{note.title || 'Untitled Note'}</h2>
                         <Badge tone={hasAiContent ? 'success' : 'muted'}>{hasAiContent ? 'AI Ready' : isFileOnlyPdf ? 'PDF attached' : 'Empty'}</Badge>
                       </div>
-                      <p className="muted text-small">Course: {note.courseTitle || note.courseId}</p>
+                      <p className="muted text-small">Course: {note.courseTitle || note.courseName || note.courseId}</p>
                       <p className="muted">
-                        {note.content.slice(0, 170)}
-                        {note.content.length > 170 ? '...' : ''}
+                        {previewText.slice(0, 170)}
+                        {previewText.length > 170 ? '...' : ''}
                       </p>
                       <span className="text-small muted">
                         Created {new Date(note.createdAt).toLocaleDateString()}
@@ -254,6 +290,32 @@ export default function NotesList() {
                 );
               })}
             </div>
+          )}
+
+          {pageInfo.totalPages > 1 && (
+            <Card className="split">
+              <span className="muted text-small">
+                Page {page} of {pageInfo.totalPages} - {pageInfo.totalCount} notes
+              </span>
+              <div className="cluster">
+                <AppButton
+                  type="button"
+                  variant="secondary"
+                  disabled={!pageInfo.hasPreviousPage || loading}
+                  onClick={() => void fetchNotes(page - 1)}
+                >
+                  Previous
+                </AppButton>
+                <AppButton
+                  type="button"
+                  variant="secondary"
+                  disabled={!pageInfo.hasNextPage || loading}
+                  onClick={() => void fetchNotes(page + 1)}
+                >
+                  Next
+                </AppButton>
+              </div>
+            </Card>
           )}
         </div>
       </div>

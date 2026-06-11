@@ -11,8 +11,12 @@ import { AppButton, Badge, Card, LoadingState } from '../components/UI/Primitive
 type NoteAttachment = {
   id?: string;
   name: string;
+  fileName?: string;
   type: string;
-  base64: string;
+  contentType?: string;
+  base64?: string;
+  sizeBytes?: number;
+  createdAt?: string;
 };
 
 type Note = {
@@ -105,7 +109,7 @@ export default function NoteDetail() {
   const [flashcards, setFlashcards] = useState<FlashcardResult[]>([]);
   const [postUploadAction, setPostUploadAction] = useState<'extract' | 'analyze' | null>(null);
 
-  const loadNote = useCallback(async () => {
+  const loadNote = useCallback(async (signal?: AbortSignal) => {
     if (!id) {
       return;
     }
@@ -114,13 +118,18 @@ export default function NoteDetail() {
     setMessage(null);
 
     try {
-      const response = await apiClient.get(`/api/notes/${id}`);
+      const response = await apiClient.get(`/api/notes/${id}`, { signal });
       const loadedNote = unwrap<Note>(response);
 
       setNote(loadedNote);
       setDraftTitle(loadedNote.title);
       setDraftContent(loadedNote.content);
-    } catch {
+    } catch (error) {
+      if ((error as { name?: string; code?: string })?.name === 'CanceledError' ||
+          (error as { code?: string })?.code === 'ERR_CANCELED') {
+        return;
+      }
+
       setNote(null);
       setMessage('Unable to load this note.');
     } finally {
@@ -129,7 +138,9 @@ export default function NoteDetail() {
   }, [id]);
 
   useEffect(() => {
-    void loadNote();
+    const controller = new AbortController();
+    void loadNote(controller.signal);
+    return () => controller.abort();
   }, [loadNote]);
 
   const isFileOnlyPdf = useMemo(() => {
@@ -144,6 +155,11 @@ export default function NoteDetail() {
   const attachments = note?.attachments ?? [];
   const canRecoverAttachmentText = !hasUsableAiContent && attachments.length > 0;
   const generatedFlashcards = flashcards.filter((card) => card.front || card.question || card.back || card.answer);
+  const noteParagraphs = useMemo(() => note?.content?.split('\n') ?? [], [note?.content]);
+  const firstEquationLine = useMemo(
+    () => note?.content?.split('\n').find((line) => line.includes('=')),
+    [note?.content]
+  );
 
   const handleGenerationModeChange = (mode: GenerationMode) => {
     setGenerationMode(mode);
@@ -420,15 +436,15 @@ export default function NoteDetail() {
             ) : (
               <>
                 {note.content ? (
-                  note.content.split('\n').map((paragraph, index) =>
+                  noteParagraphs.map((paragraph, index) =>
                     paragraph.trim() ? <p key={`${paragraph.slice(0, 24)}-${index}`}>{paragraph}</p> : <br key={index} />
                   )
                 ) : (
                   <p className="muted">This note is empty.</p>
                 )}
-                {note.content.includes('=') && (
+                {firstEquationLine && (
                   <div className="note-code-block">
-                    <pre><code>{note.content.split('\n').find((line) => line.includes('='))}</code></pre>
+                    <pre><code>{firstEquationLine}</code></pre>
                   </div>
                 )}
               </>
@@ -523,7 +539,7 @@ export default function NoteDetail() {
             <h2>Attachments ({attachments.length})</h2>
             <Badge tone="primary">Saved files</Badge>
           </div>
-          <AttachmentViewer attachments={attachments} onRemove={removeAttachment} />
+          <AttachmentViewer noteId={note.id} attachments={attachments} onRemove={removeAttachment} />
         </Card>
       )}
 

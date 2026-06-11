@@ -1,6 +1,6 @@
 # Feature Gaps
 
-Last updated: 2026-06-09
+Last updated: 2026-06-12
 
 ## M6R Smart Learning Core Status
 
@@ -68,6 +68,18 @@ Latest M7 re-verification on 2026-06-05 passed with Gemini default `gemini-3.5-f
 | Analyze existing saved file | Complete for readable files | `POST /api/notes/{noteId}/analyze-existing` extracts readable text first and sends only extracted text to AI. |
 | OCR for scanned PDFs | Future work | OCR is abstracted behind `IOcrTextExtractor`, but the current implementation returns a clear unavailable/no-readable-text message. |
 | Cross-user attachment recovery | Complete | Existing note ownership checks are reused before extraction or analysis. |
+
+## M11.2 Performance + Scalability Status
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Note Detail performance hardening | Complete | Detail reads now use user-scoped `AsNoTracking` projection and return attachment metadata only, not attachment base64. |
+| Notes List preview/pagination | Complete | List reads return paged preview DTOs with default page size 20 and max page size 50. |
+| Attachment download isolation | Complete | Attachment bytes are streamed only from a protected ownership-checked download endpoint. |
+| Performance indexes | Complete | Added `AddPerformanceIndexes` migration for attachment metadata and targeted note/quiz/attempt indexes. |
+| Redis/cache infrastructure | Future optional | Redis is not required as the primary database; it may be useful later for cache, rate limiting, or job state. |
+| File object storage | Future work | Larger deployments should move attachments from database base64 rows to object storage such as S3, Azure Blob, or a managed local file store. |
+| Background AI/OCR jobs | Future work | Heavy OCR and AI provider work should eventually move to background processing with quotas and monitoring. |
 
 ## M8.1 Integration Tests & Vulnerability Cleanup
 

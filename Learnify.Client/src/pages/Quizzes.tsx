@@ -6,9 +6,16 @@ import { AppButton, Badge, Card, EmptyState, ErrorState, LoadingState, PageHeade
 
 interface NoteOption {
   id: string;
-  content: string;
+  title?: string;
+  preview?: string;
+  content?: string;
   courseTitle?: string | null;
+  courseName?: string | null;
   createdAt: string;
+}
+
+interface PagedNotesResponse {
+  items: NoteOption[];
 }
 
 interface ApiResponse<T> {
@@ -47,11 +54,14 @@ export default function Quizzes() {
       setLoading(true);
       setError(null);
       const [notesResponse, quizList] = await Promise.all([
-        apiClient.get<ApiResponse<NoteOption[]>>('/api/notes'),
+        apiClient.get<ApiResponse<NoteOption[] | PagedNotesResponse>>('/api/notes', {
+          params: { page: 1, pageSize: 50 },
+        }),
         quizService.getQuizzes(),
       ]);
 
-      const nextNotes = notesResponse.data.data || [];
+      const noteData = notesResponse.data.data;
+      const nextNotes = Array.isArray(noteData) ? noteData : noteData?.items ?? [];
       setNotes(nextNotes);
       setQuizzes(quizList);
       setNoteId((current) => current || nextNotes[0]?.id || '');
@@ -139,14 +149,14 @@ export default function Quizzes() {
               <select id="quiz-note" value={noteId} onChange={(event) => setNoteId(event.target.value)}>
                 {notes.map((note) => (
                   <option key={note.id} value={note.id}>
-                    {(note.courseTitle || 'Untitled course')} - {note.content.slice(0, 80)}
+                    {(note.courseTitle || note.courseName || 'Untitled course')} - {(note.title || note.preview || note.content || '').slice(0, 80)}
                   </option>
                 ))}
               </select>
               {selectedNote && (
                 <p className="muted text-small mt-3">
-                  {selectedNote.content.slice(0, 180)}
-                  {selectedNote.content.length > 180 ? '...' : ''}
+                  {(selectedNote.preview || selectedNote.content || '').slice(0, 180)}
+                  {(selectedNote.preview || selectedNote.content || '').length > 180 ? '...' : ''}
                 </p>
               )}
             </label>

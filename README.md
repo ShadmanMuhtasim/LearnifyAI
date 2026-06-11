@@ -40,6 +40,19 @@ Save-only uploads do not call AI. AI analysis receives extracted text only, not 
 
 ---
 
+## Small Deployment Scalability Notes
+
+The current app is hardened for a modest small deployment, not enterprise scale. Note list/detail endpoints use paged previews, read-only projections, and attachment metadata so normal page loads avoid large file/base64 payloads.
+
+- The main application database remains SQL Server or PostgreSQL.
+- Redis is not required as the primary database.
+- Redis may be added later for cache entries, rate limiting, or background job state.
+- Larger deployments should move uploaded files to object storage such as S3, Azure Blob Storage, or a managed local object store.
+- AI provider quota management, OCR processing, and long-running generation jobs should move to background workers with monitoring and rate limits.
+- For 1000+ production users, plan real hosting capacity, database tuning, observability, file storage, backups, and provider quota controls.
+
+---
+
 ## Tech Stack
 
 ### Frontend (`Learnify.Client`)

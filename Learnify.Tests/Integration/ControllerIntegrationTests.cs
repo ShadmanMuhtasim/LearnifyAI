@@ -692,6 +692,137 @@ public sealed class ControllerIntegrationTests : IClassFixture<LearnifyWebApplic
         Assert.DoesNotContain("Failed to analyze and save document", body);
     }
 
+    [Fact]
+    public async Task NotesDetail_ReturnsAttachmentMetadataWithoutBase64Bytes()
+    {
+        var token = await RegisterAndGetTokenAsync();
+        var course = await CreateCourseAsync(token);
+        var pdfBytes = CreateTinyTextPdf("Metadata-only note detail fixture.");
+        var expectedBase64 = Convert.ToBase64String(pdfBytes);
+
+        using var uploadRequest = NewMultipartRequest(
+            "/api/notes/upload-file",
+            token,
+            course.Id,
+            new ByteArrayContent(pdfBytes),
+            "metadata-only.pdf",
+            "application/pdf");
+        var uploadResponse = await _client.SendAsync(uploadRequest);
+        var created = await ReadApiResponseAsync<NoteDTO>(uploadResponse);
+
+        using var detailRequest = NewRequest(HttpMethod.Get, $"/api/notes/{created.Id}", token);
+        var detailResponse = await _client.SendAsync(detailRequest);
+        detailResponse.EnsureSuccessStatusCode();
+        var raw = await detailResponse.Content.ReadAsStringAsync();
+        var detail = await ReadApiResponseAsync<NoteDetailDTO>(detailResponse);
+
+        Assert.DoesNotContain(expectedBase64, raw);
+        Assert.DoesNotContain("\"base64\"", raw, StringComparison.OrdinalIgnoreCase);
+        var attachment = Assert.Single(detail.Attachments);
+        Assert.Equal("metadata-only.pdf", attachment.Name);
+        Assert.Equal("application/pdf", attachment.Type);
+        Assert.True(attachment.SizeBytes > 0);
+    }
+
+    [Fact]
+    public async Task NotesDetail_IsScopedToCurrentUser()
+    {
+        var ownerToken = await RegisterAndGetTokenAsync();
+        var otherToken = await RegisterAndGetTokenAsync();
+        var course = await CreateCourseAsync(ownerToken);
+        var note = await CreateNoteAsync(ownerToken, course.Id);
+
+        using var request = NewRequest(HttpMethod.Get, $"/api/notes/{note.Id}", otherToken);
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task NotesList_ReturnsPagedPreviewWithoutFullLargeContent()
+    {
+        var token = await RegisterAndGetTokenAsync();
+        var course = await CreateCourseAsync(token);
+        var largeContent = "Performance note " + new string('A', 900) + " UNIQUE_LONG_CONTENT_TAIL";
+
+        for (var i = 0; i < 3; i++)
+        {
+            await PostApiDataAsync<NoteDTO>(
+                "/api/notes",
+                new
+                {
+                    courseId = course.Id,
+                    content = $"{largeContent} {i}",
+                    attachments = Array.Empty<NoteAttachmentDTO>()
+                },
+                token,
+                HttpStatusCode.Created);
+        }
+
+        using var request = NewRequest(HttpMethod.Get, "/api/notes?page=1&pageSize=2", token);
+        var response = await _client.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        var raw = await response.Content.ReadAsStringAsync();
+        var page = await ReadApiResponseAsync<PagedResultDTO<NoteListItemDTO>>(response);
+
+        Assert.Equal(2, page.Items.Count);
+        Assert.True(page.TotalCount >= 3);
+        Assert.All(page.Items, item => Assert.True(item.Preview.Length <= 223));
+        Assert.DoesNotContain("UNIQUE_LONG_CONTENT_TAIL", raw);
+        Assert.DoesNotContain("\"content\"", raw, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AttachmentDownload_IsProtectedByNoteOwnership()
+    {
+        var ownerToken = await RegisterAndGetTokenAsync();
+        var otherToken = await RegisterAndGetTokenAsync();
+        var course = await CreateCourseAsync(ownerToken);
+        var pdfBytes = CreateTinyTextPdf("Private attachment bytes.");
+
+        using var uploadRequest = NewMultipartRequest(
+            "/api/notes/upload-file",
+            ownerToken,
+            course.Id,
+            new ByteArrayContent(pdfBytes),
+            "private-download.pdf",
+            "application/pdf");
+        var uploadResponse = await _client.SendAsync(uploadRequest);
+        var created = await ReadApiResponseAsync<NoteDTO>(uploadResponse);
+        var attachment = Assert.Single(created.Attachments);
+
+        using var ownerRequest = NewRequest(HttpMethod.Get, $"/api/notes/{created.Id}/attachments/{attachment.Id}/download", ownerToken);
+        var ownerResponse = await _client.SendAsync(ownerRequest);
+        ownerResponse.EnsureSuccessStatusCode();
+        Assert.Equal("application/pdf", ownerResponse.Content.Headers.ContentType?.MediaType);
+
+        using var otherRequest = NewRequest(HttpMethod.Get, $"/api/notes/{created.Id}/attachments/{attachment.Id}/download", otherToken);
+        var otherResponse = await _client.SendAsync(otherRequest);
+        Assert.Equal(HttpStatusCode.NotFound, otherResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task NotesUploadMaterial_RejectsOversizedFilesClearly()
+    {
+        var token = await RegisterAndGetTokenAsync();
+        var course = await CreateCourseAsync(token);
+        var oversized = new byte[(5 * 1024 * 1024) + 1];
+
+        using var request = NewMaterialUploadRequest(
+            token,
+            course.Id,
+            "SaveOnly",
+            new ByteArrayContent(oversized),
+            "too-large.txt",
+            "text/plain",
+            "Too Large");
+        var response = await _client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("File too large", body);
+    }
+
     private async Task<string> RegisterAndGetTokenAsync()
     {
         var email = $"integration-{Guid.NewGuid():N}@learnify.test";
