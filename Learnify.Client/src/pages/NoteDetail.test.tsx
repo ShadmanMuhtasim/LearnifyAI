@@ -125,6 +125,39 @@ describe('NoteDetail AI actions', () => {
     expect(await screen.findByText(/use chaining/i)).toBeInTheDocument();
   });
 
+  it('renders a loading skeleton before note detail resolves', async () => {
+    mocks.get.mockReturnValueOnce(new Promise(() => {}));
+
+    renderNoteDetail();
+
+    expect(screen.getByText(/Loading note/i)).toBeInTheDocument();
+  });
+
+  it('renders note content with attachment metadata that has no base64 bytes', async () => {
+    mocks.get.mockResolvedValueOnce({
+      data: {
+        data: {
+          ...note,
+          attachments: [
+            {
+              id: 'attachment-1',
+              name: 'metadata-only.pdf',
+              type: 'application/pdf',
+              sizeBytes: 2048,
+              createdAt: '2026-06-01T00:00:00Z',
+            },
+          ],
+        },
+      },
+    });
+
+    renderNoteDetail();
+
+    expect(await screen.findByText(/Hash maps resolve collisions/i)).toBeInTheDocument();
+    expect(screen.getByText('metadata-only.pdf')).toBeInTheDocument();
+    expect(screen.getByText('2.0 KB')).toBeInTheDocument();
+  });
+
   it('calls flashcard generation from the sidebar button', async () => {
     renderNoteDetail();
 

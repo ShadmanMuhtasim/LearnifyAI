@@ -1,18 +1,28 @@
 import { useState } from 'react';
+import apiClient from '../../services/api';
 
 interface Attachment {
+  id?: string;
   name: string;
+  fileName?: string;
   type: string;
-  base64: string;
+  contentType?: string;
+  base64?: string;
+  sizeBytes?: number;
+  createdAt?: string;
 }
 
 interface AttachmentViewerProps {
+  noteId?: string;
   attachments: Attachment[];
   onRemove?: (index: number) => void;
 }
 
-const AttachmentViewer: React.FC<AttachmentViewerProps> = ({ attachments, onRemove }) => {
+const AttachmentViewer: React.FC<AttachmentViewerProps> = ({ noteId, attachments, onRemove }) => {
   const [preview, setPreview] = useState<Attachment | null>(null);
+
+  const getName = (attachment: Attachment) => attachment.fileName || attachment.name;
+  const getType = (attachment: Attachment) => attachment.contentType || attachment.type || 'application/octet-stream';
 
   const getFileIcon = (type: string): string => {
     if (type.startsWith('image/')) return '🖼️';
@@ -27,20 +37,46 @@ const AttachmentViewer: React.FC<AttachmentViewerProps> = ({ attachments, onRemo
     return '📎';
   };
 
-  const formatFileSize = (base64: string): string => {
-    const size = Math.round((base64.length * 3) / 1024);
-    if (size < 1024) return `${size} KB`;
-    return `${(size / 1024).toFixed(1)} MB`;
+  const formatFileSize = (attachment: Attachment): string => {
+    const bytes = attachment.sizeBytes ?? (attachment.base64 ? Math.round((attachment.base64.length * 3) / 4) : 0);
+    if (bytes <= 0) return 'Stored file';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const getDownloadUrl = (attachment: Attachment): string => {
-    return `data:${attachment.type};base64,${attachment.base64}`;
+  const getDownloadUrl = (attachment: Attachment): string | null => {
+    if (!attachment.base64) {
+      return null;
+    }
+
+    return `data:${getType(attachment)};base64,${attachment.base64}`;
   };
 
-  const handleDownload = (attachment: Attachment) => {
+  const handleDownload = async (attachment: Attachment) => {
+    if (noteId && attachment.id && !attachment.base64) {
+      const response = await apiClient.get(`/api/notes/${noteId}/attachments/${attachment.id}/download`, {
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = getName(attachment);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    const downloadUrl = getDownloadUrl(attachment);
+    if (!downloadUrl) {
+      return;
+    }
+
     const link = document.createElement('a');
-    link.href = getDownloadUrl(attachment);
-    link.download = attachment.name;
+    link.href = downloadUrl;
+    link.download = getName(attachment);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -88,7 +124,7 @@ const AttachmentViewer: React.FC<AttachmentViewerProps> = ({ attachments, onRemo
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <span style={{ fontSize: '24px' }}>{getFileIcon(attachment.type)}</span>
+              <span style={{ fontSize: '24px' }}>{getFileIcon(getType(attachment))}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{
                   margin: 0,
@@ -99,14 +135,14 @@ const AttachmentViewer: React.FC<AttachmentViewerProps> = ({ attachments, onRemo
                   whiteSpace: 'nowrap',
                   color: '#1f2937'
                 }}>
-                  {attachment.name}
+                  {getName(attachment)}
                 </p>
                 <p style={{
                   margin: 0,
                   fontSize: '11px',
                   color: '#9ca3af'
                 }}>
-                  {formatFileSize(attachment.base64)}
+                  {formatFileSize(attachment)}
                 </p>
               </div>
             </div>
@@ -114,7 +150,7 @@ const AttachmentViewer: React.FC<AttachmentViewerProps> = ({ attachments, onRemo
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleDownload(attachment);
+                  void handleDownload(attachment);
                 }}
                 style={{
                   flex: 1,
@@ -213,13 +249,13 @@ const AttachmentViewer: React.FC<AttachmentViewerProps> = ({ attachments, onRemo
             </button>
 
             <h3 style={{ margin: '0 0 16px 0', color: '#1f2937', paddingRight: '40px' }}>
-              {preview.name}
+              {getName(preview)}
             </h3>
 
-            {isImage(preview.type) ? (
+            {isImage(getType(preview)) && getDownloadUrl(preview) ? (
               <img
-                src={getDownloadUrl(preview)}
-                alt={preview.name}
+                src={getDownloadUrl(preview) ?? ''}
+                alt={getName(preview)}
                 style={{
                   maxWidth: '100%',
                   maxHeight: '60vh',
@@ -235,13 +271,13 @@ const AttachmentViewer: React.FC<AttachmentViewerProps> = ({ attachments, onRemo
                 borderRadius: '8px'
               }}>
                 <div style={{ fontSize: '64px', marginBottom: '16px' }}>
-                  {getFileIcon(preview.type)}
+                  {getFileIcon(getType(preview))}
                 </div>
                 <p style={{ color: '#6b7280', marginBottom: '16px' }}>
                   This file type cannot be previewed.
                 </p>
                 <button
-                  onClick={() => handleDownload(preview)}
+                  onClick={() => void handleDownload(preview)}
                   style={{
                     padding: '8px 24px',
                     backgroundColor: '#3b82f6',
