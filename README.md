@@ -28,6 +28,18 @@ LearnifyAI is a full-stack AI-powered learning platform targeting individual lea
 
 ---
 
+## Upload Workflow
+
+LearnifyAI supports a unified authenticated material upload flow for `.txt`, `.md`, `.docx`, and `.pdf` files:
+
+- `POST /api/notes/upload-material` with `SaveOnly`, `ExtractAndSave`, or `AiAnalyzeAndSave`.
+- `POST /api/notes/{noteId}/extract-attachment-text` to recover readable text from a saved attachment later.
+- `POST /api/notes/{noteId}/analyze-existing` to extract readable text from an existing attachment and then run AI analysis.
+
+Save-only uploads do not call AI. AI analysis receives extracted text only, not raw file bytes/base64. OCR for scanned/image-only PDFs is a future gap and currently returns a clear OCR-unavailable message.
+
+---
+
 ## Tech Stack
 
 ### Frontend (`Learnify.Client`)
@@ -411,3 +423,6 @@ LearnifyAI/
 | M11 — AI Tutor & Study Planner | Chat interface, calendar scheduler | ⏳ Planned |
 | M12 — Deployment & DevOps | Docker, CI/CD, Azure App Service | ⏳ Planned |
 | M13 — Docs & Launch | Swagger, ADRs, getting started guide | ⏳ Planned |
+## Note Detail study generation modes
+
+Note Detail supports Auto, AI, and Free Local modes for Summary, Flashcards, and Study Tips. Free Local uses readable saved note text, including extracted PDF text, and does not require an external AI provider.

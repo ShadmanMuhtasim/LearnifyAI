@@ -1,6 +1,6 @@
 # Feature Gaps
 
-Last updated: 2026-06-05
+Last updated: 2026-06-09
 
 ## M6R Smart Learning Core Status
 
@@ -12,7 +12,7 @@ Last updated: 2026-06-05
 | AI provider badge/settings UI | Complete | Static inspection confirms protected Settings route, save UI, local connection test, and global protected nav badge. |
 | Text note upload | Complete | Runtime audit confirmed `.txt` and `.md` uploads persist `Note.Content`. |
 | Flashcard viewer polish | Complete | Static inspection confirms flip, previous/next, keyboard navigation, shuffle, confidence buttons, and session score tracking. |
-| PDF text extraction | Partial | Text-based PDF extraction is supported through server-side PdfPig extraction. Scanned/image-only PDFs and OCR are not supported yet. |
+| PDF text extraction | Partial | Text-based PDF extraction is supported during upload and after save through server-side extraction. Scanned/image-only PDFs return a clear OCR-unavailable message. |
 | Local LLaMA generation | Complete | Learnify supports separate `Ollama` (`/api/*`) and `LocalOpenAI` (`/v1/*`) providers. Runtime verification passed through `LocalOpenAI` for provider test, summarize, flashcards, quiz generation, and quiz submission. |
 
 ## M7 Quiz Engine Status
@@ -58,6 +58,16 @@ Latest M7 re-verification on 2026-06-05 passed with Gemini default `gemini-3.5-f
 | Achievements frontend | Complete | Protected `/achievements` page shows locked/unlocked achievement cards and progress. |
 | Cross-user isolation | Complete | Integration tests verify one user's activity does not appear in another user's analytics. |
 | Advanced analytics | Future work | Time spent studying, topic mastery, heatmap charts, trend reports, adaptive recommendations, and levels remain future work. |
+
+## M11.1 Upload + Extraction Status
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Unified material upload | Complete | `POST /api/notes/upload-material` supports `SaveOnly`, `ExtractAndSave`, and `AiAnalyzeAndSave` for owned courses. |
+| Post-upload extraction | Complete for readable files | Saved attachments can be extracted later through `POST /api/notes/{noteId}/extract-attachment-text`. |
+| Analyze existing saved file | Complete for readable files | `POST /api/notes/{noteId}/analyze-existing` extracts readable text first and sends only extracted text to AI. |
+| OCR for scanned PDFs | Future work | OCR is abstracted behind `IOcrTextExtractor`, but the current implementation returns a clear unavailable/no-readable-text message. |
+| Cross-user attachment recovery | Complete | Existing note ownership checks are reused before extraction or analysis. |
 
 ## M8.1 Integration Tests & Vulnerability Cleanup
 
@@ -137,3 +147,10 @@ Latest M7 re-verification on 2026-06-05 passed with Gemini default `gemini-3.5-f
 - Remaining caveat: the post-fix live 8-question Qwen runtime smoke still needs confirmation because the local command approval environment hit its usage limit before the runtime model/API smoke could run.
 - Follow-up reliability fix adds a sequential one-question fallback for LocalOpenAI 7- and 8-question quizzes after batch generation cannot fill the requested size. Automated tests cover 7-question fallback, 8-question fallback, duplicate skipping, and max-attempt failure.
 - Remaining caveat: live 7/8-question Qwen runtime smoke still needs confirmation because `http://127.0.0.1:8080/v1/models` was unreachable during the latest verification pass.
+## Note Detail Free Local generation - complete pending full local smoke
+
+- Summary, Flashcards, and Study Tips on Note Detail now expose Auto, AI, and Free Local generation modes.
+- Free Local mode routes through deterministic local study generation and does not call configured AI providers.
+- Auto mode falls back to Free Local on safe provider failures and surfaces a fallback notice.
+- Placeholder PDF-only notes still require text extraction before study tools are enabled.
+- Text-based PDF extraction remains supported; OCR remains a separate caveat if OCR availability is still pending in the runtime environment.

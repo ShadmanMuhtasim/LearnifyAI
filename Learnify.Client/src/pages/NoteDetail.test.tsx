@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   generateFlashcards: vi.fn(),
   getStudyTips: vi.fn(),
   generateQuiz: vi.fn(),
+  extractAttachmentText: vi.fn(),
+  analyzeExistingNote: vi.fn(),
 }));
 
 vi.mock('../services/api', () => ({
@@ -25,6 +27,11 @@ vi.mock('../services/aiService', () => ({
   summarizeNote: mocks.summarizeNote,
   generateFlashcards: mocks.generateFlashcards,
   getStudyTips: mocks.getStudyTips,
+}));
+
+vi.mock('../services/noteUploadService', () => ({
+  extractAttachmentText: mocks.extractAttachmentText,
+  analyzeExistingNote: mocks.analyzeExistingNote,
 }));
 
 vi.mock('../services/quizService', () => ({
@@ -70,6 +77,7 @@ const renderNoteDetail = () =>
 describe('NoteDetail AI actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     mocks.get.mockResolvedValue({ data: { data: note } });
     mocks.put.mockResolvedValue({ data: { data: note } });
     mocks.delete.mockResolvedValue({ data: { success: true } });
@@ -81,6 +89,25 @@ describe('NoteDetail AI actions', () => {
     });
     mocks.getStudyTips.mockResolvedValue({ data: { tips: 'Practice tracing inserts through buckets.' } });
     mocks.generateQuiz.mockResolvedValue({ data: { id: 'quiz-1' } });
+    mocks.extractAttachmentText.mockResolvedValue({
+      noteId: 'note-1',
+      extractionStatus: 'Extracted',
+      characterCount: 80,
+      warning: null,
+      message: 'Extracted text and saved the note.',
+    });
+    mocks.analyzeExistingNote.mockResolvedValue({
+      noteId: 'note-1',
+      title: 'Hash Maps',
+      extractionStatus: 'Analyzed',
+      characterCount: 80,
+      attachmentCount: 1,
+      warning: null,
+      aiUsed: true,
+      generationModeUsed: 'summary',
+      fromCache: false,
+      message: 'Analyzed extracted text and saved the note.',
+    });
   });
 
   it('calls summary generation from the sidebar button', async () => {
@@ -88,7 +115,13 @@ describe('NoteDetail AI actions', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /generate summary/i }));
 
-    await waitFor(() => expect(mocks.summarizeNote).toHaveBeenCalledWith({ noteId: note.id, content: note.content }));
+    await waitFor(() =>
+      expect(mocks.summarizeNote).toHaveBeenCalledWith({
+        noteId: note.id,
+        content: note.content,
+        generationMode: 'Auto',
+      })
+    );
     expect(await screen.findByText(/use chaining/i)).toBeInTheDocument();
   });
 
@@ -97,7 +130,13 @@ describe('NoteDetail AI actions', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /generate flashcards/i }));
 
-    await waitFor(() => expect(mocks.generateFlashcards).toHaveBeenCalledWith({ noteId: note.id, content: note.content }));
+    await waitFor(() =>
+      expect(mocks.generateFlashcards).toHaveBeenCalledWith({
+        noteId: note.id,
+        content: note.content,
+        generationMode: 'Auto',
+      })
+    );
     expect(await screen.findByText(/collision strategy/i)).toBeInTheDocument();
     expect(screen.getAllByText(/chaining or open addressing/i).length).toBeGreaterThanOrEqual(2);
   });
@@ -110,6 +149,7 @@ describe('NoteDetail AI actions', () => {
     await waitFor(() =>
       expect(mocks.getStudyTips).toHaveBeenCalledWith({
         topic: `${note.title}\n\n${note.content}`,
+        generationMode: 'Auto',
       })
     );
     expect(await screen.findByText(/practice tracing inserts/i)).toBeInTheDocument();
@@ -143,5 +183,93 @@ describe('NoteDetail AI actions', () => {
     expect(screen.getByRole('button', { name: /generate flashcards/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /generate study tips/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /generate quiz/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Extract Text/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /Analyze Existing File/i })).toBeEnabled();
+  });
+
+  it('extracts saved attachment text and enables AI actions after reload', async () => {
+    const extractedNote = {
+      ...fileOnlyPdfNote,
+      content: '# lecture\n\n## Extracted Text\nReadable PDF text after extraction.',
+    };
+    mocks.get
+      .mockResolvedValueOnce({ data: { data: fileOnlyPdfNote } })
+      .mockResolvedValueOnce({ data: { data: extractedNote } });
+
+    renderNoteDetail();
+
+    fireEvent.click(await screen.findByRole('button', { name: /Extract Text/i }));
+
+    await waitFor(() => expect(mocks.extractAttachmentText).toHaveBeenCalledWith('note-1'));
+    expect(await screen.findByText(/Extracted text and saved the note/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /generate summary/i })).toBeEnabled();
+  });
+
+  it('renders the generation mode selector', async () => {
+    renderNoteDetail();
+
+    expect(await screen.findByRole('button', { name: 'Auto' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'AI' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Free Local' })).toBeInTheDocument();
+  });
+
+  it('sends FreeLocal when generating from the selector', async () => {
+    renderNoteDetail();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Free Local' }));
+    fireEvent.click(screen.getByRole('button', { name: /generate summary/i }));
+
+    await waitFor(() =>
+      expect(mocks.summarizeNote).toHaveBeenCalledWith({
+        noteId: note.id,
+        content: note.content,
+        generationMode: 'FreeLocal',
+      })
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /generate flashcards/i }));
+    await waitFor(() =>
+      expect(mocks.generateFlashcards).toHaveBeenCalledWith({
+        noteId: note.id,
+        content: note.content,
+        generationMode: 'FreeLocal',
+      })
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /generate study tips/i }));
+    await waitFor(() =>
+      expect(mocks.getStudyTips).toHaveBeenCalledWith({
+        topic: `${note.title}\n\n${note.content}`,
+        generationMode: 'FreeLocal',
+      })
+    );
+  });
+
+  it('shows fallback notices returned by Auto mode', async () => {
+    mocks.summarizeNote.mockResolvedValueOnce({
+      data: {
+        summary: 'Local fallback summary.',
+        notice: 'AI provider was unavailable, so Learnify generated this locally with Free Local study tools.',
+        generationModeUsed: 'FreeLocal',
+      },
+    });
+    renderNoteDetail();
+
+    fireEvent.click(await screen.findByRole('button', { name: /generate summary/i }));
+
+    expect(await screen.findByText(/generated this locally with Free Local/i)).toBeInTheDocument();
+    expect(await screen.findByText(/local fallback summary/i)).toBeInTheDocument();
+  });
+
+  it('shows provider errors when AI mode fails', async () => {
+    mocks.summarizeNote.mockRejectedValueOnce({
+      response: { data: { message: 'AI provider failed while summarizing this note.' } },
+    });
+    renderNoteDetail();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'AI' }));
+    fireEvent.click(screen.getByRole('button', { name: /generate summary/i }));
+
+    expect(await screen.findByText(/AI provider failed while summarizing/i)).toBeInTheDocument();
   });
 });

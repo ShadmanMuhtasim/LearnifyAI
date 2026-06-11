@@ -838,6 +838,17 @@ textarea,
   gap: 10px;
 }
 
+.generation-mode-selector {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.generation-mode-selector .ui-button {
+  min-height: 38px;
+  padding-inline: 10px;
+}
+
 .concept-card {
   display: grid;
   gap: 5px;

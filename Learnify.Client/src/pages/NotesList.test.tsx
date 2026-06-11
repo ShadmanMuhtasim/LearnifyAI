@@ -45,31 +45,49 @@ describe('NotesList upload modal', () => {
 
       return Promise.reject(new Error(`Unhandled GET ${url}`));
     });
-    mocks.post.mockResolvedValue({ data: { success: true } });
+    mocks.post.mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          noteId: 'note-1',
+          title: 'Lecture',
+          extractionStatus: 'Saved',
+          characterCount: 0,
+          attachmentCount: 1,
+          warning: null,
+          aiUsed: false,
+          generationModeUsed: null,
+          fromCache: false,
+          message: 'Saved the file without AI analysis.',
+        },
+      },
+    });
   });
 
-  it('uploads a simple PDF through upload-file without calling AI analysis', async () => {
+  it('uses the unified upload-material workflow instead of legacy upload choices', async () => {
     renderNotesList();
 
     await screen.findByText(/No notes found/i);
     fireEvent.click(screen.getAllByRole('button', { name: /^Upload$/i })[0]);
 
-    expect(await screen.findByText('Simple PDF Upload')).toBeInTheDocument();
-    expect(screen.getByText(/Save a PDF to your notes without AI analysis/i)).toBeInTheDocument();
+    expect(await screen.findByText('Unified upload')).toBeInTheDocument();
+    expect(screen.queryByText('Simple PDF Upload')).not.toBeInTheDocument();
+    expect(screen.queryByText('AI upload and analysis')).not.toBeInTheDocument();
 
-    fireEvent.change(document.querySelector('#pdf-upload-course') as HTMLSelectElement, {
-      target: { value: 'course-1' },
-    });
-    fireEvent.change(screen.getByLabelText(/PDF file/i), {
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(fileInput, {
       target: {
         files: [new File(['%PDF-1.4'], 'lecture.pdf', { type: 'application/pdf' })],
       },
     });
-
-    fireEvent.click(screen.getByRole('button', { name: /Save PDF Without AI/i }));
+    fireEvent.change(screen.getByLabelText(/Course/i), {
+      target: { value: 'course-1' },
+    });
+    const saveOnlyButtons = screen.getAllByRole('button', { name: /Save only/i });
+    fireEvent.click(saveOnlyButtons[saveOnlyButtons.length - 1]);
 
     await waitFor(() => expect(mocks.post).toHaveBeenCalledWith(
-      '/api/notes/upload-file',
+      '/api/notes/upload-material',
       expect.any(FormData),
       { headers: { 'Content-Type': 'multipart/form-data' } }
     ));

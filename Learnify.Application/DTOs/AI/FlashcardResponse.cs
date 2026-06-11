@@ -6,4 +6,8 @@ namespace Learnify.Application.DTOs.AI;
 public record FlashcardResponse(
     string NoteId,
     IReadOnlyList<FlashcardItem> Flashcards,
-    DateTime GeneratedAt);
+    DateTime GeneratedAt,
+    string? GenerationModeUsed = null,
+    string? ProviderUsed = null,
+    string? Notice = null,
+    bool FromCache = false);

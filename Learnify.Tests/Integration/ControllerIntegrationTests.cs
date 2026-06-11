@@ -188,6 +188,114 @@ public sealed class ControllerIntegrationTests : IClassFixture<LearnifyWebApplic
         Assert.Equal(2, flashcardResponse.Flashcards.Count);
     }
 
+    [Theory]
+    [InlineData("/api/ai/summarize", "summary")]
+    [InlineData("/api/ai/flashcards", "flashcards")]
+    [InlineData("/api/ai/study-tips", "study-tips")]
+    public async Task AiController_FreeLocalModeDoesNotCallProvider(string path, string tool)
+    {
+        _factory.ResetAiCallCounts();
+        var token = await RegisterAndGetTokenAsync();
+        var body = BuildStudyGenerationBody(tool, "FreeLocal");
+
+        using var json = await PostRawJsonAsync(path, body, token);
+
+        Assert.Equal("FreeLocal", json.RootElement.GetProperty("generationModeUsed").GetString());
+        Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("providerUsed").ValueKind);
+        Assert.Equal(0, _factory.SummaryCallCount);
+        Assert.Equal(0, _factory.FlashcardCallCount);
+        Assert.Equal(0, _factory.StudyTipsCallCount);
+    }
+
+    [Theory]
+    [InlineData("/api/ai/summarize", "summary")]
+    [InlineData("/api/ai/flashcards", "flashcards")]
+    [InlineData("/api/ai/study-tips", "study-tips")]
+    public async Task AiController_AutoFallsBackToFreeLocalOnProviderFailure(string path, string tool)
+    {
+        _factory.ResetAiCallCounts();
+        _factory.ShouldFailStudyGeneration = true;
+        var token = await RegisterAndGetTokenAsync();
+        var body = BuildStudyGenerationBody(tool, "Auto");
+
+        using var json = await PostRawJsonAsync(path, body, token);
+
+        Assert.Equal("FreeLocal", json.RootElement.GetProperty("generationModeUsed").GetString());
+        Assert.Contains("generated this locally", json.RootElement.GetProperty("notice").GetString());
+        Assert.Equal(1, GetProviderCallCount(tool));
+    }
+
+    [Fact]
+    public async Task AiController_AiProviderModeReturnsProviderErrorWithoutFallback()
+    {
+        _factory.ResetAiCallCounts();
+        _factory.ShouldFailStudyGeneration = true;
+        var token = await RegisterAndGetTokenAsync();
+
+        using var request = NewRequest(
+            HttpMethod.Post,
+            "/api/ai/summarize",
+            token,
+            BuildStudyGenerationBody("summary", "AIProvider"));
+        var response = await _client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        Assert.Contains("AI_PROVIDER_UNAVAILABLE", body);
+        Assert.Equal(1, _factory.SummaryCallCount);
+    }
+
+    [Fact]
+    public async Task AiController_FreeLocalSummaryUsesUserScopedCache()
+    {
+        _factory.ResetAiCallCounts();
+        var token = await RegisterAndGetTokenAsync();
+        var body = BuildStudyGenerationBody("summary", "FreeLocal");
+
+        using var first = await PostRawJsonAsync("/api/ai/summarize", body, token);
+        using var second = await PostRawJsonAsync("/api/ai/summarize", body, token);
+
+        Assert.False(first.RootElement.GetProperty("fromCache").GetBoolean());
+        Assert.True(second.RootElement.GetProperty("fromCache").GetBoolean());
+        Assert.Equal(0, _factory.SummaryCallCount);
+    }
+
+    [Fact]
+    public async Task AiController_FreeLocalWorksWithExtractedPdfTextContent()
+    {
+        _factory.ResetAiCallCounts();
+        var token = await RegisterAndGetTokenAsync();
+        var course = await CreateCourseAsync(token);
+        var pdfBytes = CreateTinyTextPdf("Extracted PDF text can generate local study tools.");
+
+        using var saveRequest = NewMaterialUploadRequest(
+            token,
+            course.Id,
+            "SaveOnly",
+            new ByteArrayContent(pdfBytes),
+            "local-tools.pdf",
+            "application/pdf",
+            "Local Tools");
+        var saveResponse = await _client.SendAsync(saveRequest);
+        Assert.Equal(HttpStatusCode.Created, saveResponse.StatusCode);
+        var saveJson = await ReadApiResponseAsync<JsonElement>(saveResponse);
+        var noteId = saveJson.GetProperty("noteId").GetGuid();
+
+        using var extractRequest = NewRequest(HttpMethod.Post, $"/api/notes/{noteId}/extract-attachment-text", token);
+        var extractResponse = await _client.SendAsync(extractRequest);
+        Assert.Equal(HttpStatusCode.OK, extractResponse.StatusCode);
+        var extractedNote = await GetApiDataAsync<NoteDTO>($"/api/notes/{noteId}", token);
+
+        using var summary = await PostRawJsonAsync(
+            "/api/ai/summarize",
+            new SummarizeNoteRequest(noteId.ToString(), extractedNote.Content, "FreeLocal"),
+            token);
+
+        Assert.Equal("FreeLocal", summary.RootElement.GetProperty("generationModeUsed").GetString());
+        Assert.Contains("Extracted PDF text", summary.RootElement.GetProperty("summary").GetString());
+        Assert.Equal(0, _factory.SummaryCallCount);
+    }
+
     [Fact]
     public async Task AiController_ProviderTestDistinguishesLocalOpenAiAndOllamaProtocols()
     {
@@ -478,6 +586,112 @@ public sealed class ControllerIntegrationTests : IClassFixture<LearnifyWebApplic
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    [Fact]
+    public async Task NotesUploadMaterial_Returns401WithoutJwt()
+    {
+        using var content = new MultipartFormDataContent();
+        content.Add(new StringContent(Guid.NewGuid().ToString()), "courseId");
+        content.Add(new StringContent("SaveOnly"), "mode");
+        content.Add(new ByteArrayContent(Encoding.UTF8.GetBytes("private note")), "file", "private.txt");
+
+        var response = await _client.PostAsync("/api/notes/upload-material", content);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task NotesUploadMaterial_SaveOnlyTextStoresReadableContentWithoutCallingAi()
+    {
+        _factory.ResetAiCallCounts();
+        var token = await RegisterAndGetTokenAsync();
+        var course = await CreateCourseAsync(token);
+
+        using var request = NewMaterialUploadRequest(
+            token,
+            course.Id,
+            "SaveOnly",
+            new ByteArrayContent(Encoding.UTF8.GetBytes("M11 upload workflow saves this text.")),
+            "workflow-note.txt",
+            "text/plain",
+            "Workflow Note");
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var json = await ReadApiResponseAsync<JsonElement>(response);
+        var noteId = json.GetProperty("noteId").GetGuid();
+        Assert.Equal(0, _factory.AnalyzeDocumentCallCount);
+
+        var note = await GetApiDataAsync<NoteDTO>($"/api/notes/{noteId}", token);
+        Assert.Contains("M11 upload workflow saves this text.", note.Content);
+        Assert.DoesNotContain("AI Summary", note.Content);
+        Assert.Equal("workflow-note.txt", Assert.Single(note.Attachments).Name);
+    }
+
+    [Fact]
+    public async Task NotesUploadMaterial_PdfCanBeSavedThenExtractedAndAnalyzedLater()
+    {
+        _factory.ResetAiCallCounts();
+        var token = await RegisterAndGetTokenAsync();
+        var course = await CreateCourseAsync(token);
+        var pdfBytes = CreateTinyTextPdf("Post upload PDF extraction text is recoverable.");
+
+        using var saveRequest = NewMaterialUploadRequest(
+            token,
+            course.Id,
+            "SaveOnly",
+            new ByteArrayContent(pdfBytes),
+            "recover-later.pdf",
+            "application/pdf",
+            "Recover Later");
+        var saveResponse = await _client.SendAsync(saveRequest);
+
+        Assert.Equal(HttpStatusCode.Created, saveResponse.StatusCode);
+        var saveJson = await ReadApiResponseAsync<JsonElement>(saveResponse);
+        var noteId = saveJson.GetProperty("noteId").GetGuid();
+        Assert.Equal(0, _factory.AnalyzeDocumentCallCount);
+
+        var savedNote = await GetApiDataAsync<NoteDTO>($"/api/notes/{noteId}", token);
+        Assert.Contains("uploaded without text extraction", savedNote.Content);
+        Assert.Single(savedNote.Attachments);
+
+        using var extractRequest = NewRequest(HttpMethod.Post, $"/api/notes/{noteId}/extract-attachment-text", token);
+        var extractResponse = await _client.SendAsync(extractRequest);
+        Assert.Equal(HttpStatusCode.OK, extractResponse.StatusCode);
+        var extractedNote = await GetApiDataAsync<NoteDTO>($"/api/notes/{noteId}", token);
+        Assert.Contains("Post upload PDF extraction text is recoverable.", extractedNote.Content);
+
+        using var analyzeRequest = NewRequest(HttpMethod.Post, $"/api/notes/{noteId}/analyze-existing", token, new { });
+        var analyzeResponse = await _client.SendAsync(analyzeRequest);
+        Assert.Equal(HttpStatusCode.OK, analyzeResponse.StatusCode);
+        Assert.Equal(1, _factory.AnalyzeDocumentCallCount);
+
+        var analyzedNote = await GetApiDataAsync<NoteDTO>($"/api/notes/{noteId}", token);
+        Assert.Contains("Mocked document summary.", analyzedNote.Content);
+        Assert.Contains("Post upload PDF extraction text is recoverable.", analyzedNote.Content);
+    }
+
+    [Fact]
+    public async Task NotesUploadMaterial_InvalidPdfExtractionReturnsCleanBadRequest()
+    {
+        var token = await RegisterAndGetTokenAsync();
+        var course = await CreateCourseAsync(token);
+
+        using var request = NewMaterialUploadRequest(
+            token,
+            course.Id,
+            "ExtractAndSave",
+            new ByteArrayContent(Encoding.UTF8.GetBytes("not a pdf")),
+            "broken.pdf",
+            "application/pdf",
+            "Broken");
+        var response = await _client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("OCR is not available", body);
+        Assert.DoesNotContain("Failed to analyze and save document", body);
+    }
+
     private async Task<string> RegisterAndGetTokenAsync()
     {
         var email = $"integration-{Guid.NewGuid():N}@learnify.test";
@@ -600,6 +814,48 @@ public sealed class ControllerIntegrationTests : IClassFixture<LearnifyWebApplic
         };
 
         var request = NewRequest(HttpMethod.Post, path, token);
+        request.Content = multipart;
+        return request;
+    }
+
+    private static object BuildStudyGenerationBody(string tool, string mode)
+    {
+        var content = $"M11 {tool} content has readable extracted text. It explains local generation, fallback behavior, and study practice clearly.";
+        return tool switch
+        {
+            "study-tips" => new StudyTipsRequest(content, mode),
+            "flashcards" => new FlashcardRequest("note-1", content, Count: 3, GenerationMode: mode),
+            _ => new SummarizeNoteRequest("note-1", content, mode)
+        };
+    }
+
+    private int GetProviderCallCount(string tool)
+        => tool switch
+        {
+            "study-tips" => _factory.StudyTipsCallCount,
+            "flashcards" => _factory.FlashcardCallCount,
+            _ => _factory.SummaryCallCount
+        };
+
+    private static HttpRequestMessage NewMaterialUploadRequest(
+        string token,
+        Guid courseId,
+        string mode,
+        ByteArrayContent fileContent,
+        string fileName,
+        string contentType,
+        string title)
+    {
+        fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+        var multipart = new MultipartFormDataContent
+        {
+            { new StringContent(courseId.ToString()), "courseId" },
+            { new StringContent(mode), "mode" },
+            { new StringContent(title), "title" },
+            { fileContent, "file", fileName }
+        };
+
+        var request = NewRequest(HttpMethod.Post, "/api/notes/upload-material", token);
         request.Content = multipart;
         return request;
     }

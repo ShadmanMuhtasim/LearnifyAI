@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import apiClient from '../services/api';
-import { generateFlashcards, getStudyTips, summarizeNote } from '../services/aiService';
+import { generateFlashcards, getStudyTips, summarizeNote, type GenerationMode } from '../services/aiService';
+import { analyzeExistingNote, extractAttachmentText } from '../services/noteUploadService';
 import { quizService } from '../services/quizService';
 import AttachmentViewer from '../components/Notes/AttachmentViewer';
 import FileUploader from '../components/Notes/FileUploader';
@@ -36,11 +37,28 @@ type FlashcardResult = {
 
 type ActiveTool = 'summary' | 'flashcards' | 'tips' | 'quiz';
 
+type GenerationMetadata = {
+  notice?: string | null;
+  generationModeUsed?: GenerationMode;
+  fromCache?: boolean;
+};
+
 const conceptHints = ['Key Terms', 'Definitions', 'Examples', 'Open Questions'];
 const FILE_ONLY_PDF_CONTENT =
   'This PDF was uploaded without text extraction. Use AI Analyze on a text-based PDF or upload .txt/.md content to generate AI study tools.';
 const AI_UNAVAILABLE_MESSAGE =
-  'AI summary, flashcards, quizzes, and study tips require readable extracted text. Use AI Analyze on a text-based PDF or upload .txt/.md content.';
+  'AI summary, flashcards, quizzes, and study tips require readable extracted text. Extract text from the saved attachment or analyze the existing file first.';
+const NOTE_DETAIL_GENERATION_MODE_KEY = 'learnify.noteDetail.generationMode';
+const generationModes: { value: GenerationMode; label: string }[] = [
+  { value: 'Auto', label: 'Auto' },
+  { value: 'AIProvider', label: 'AI' },
+  { value: 'FreeLocal', label: 'Free Local' },
+];
+
+const readGenerationModePreference = (): GenerationMode => {
+  const saved = window.localStorage.getItem(NOTE_DETAIL_GENERATION_MODE_KEY);
+  return generationModes.some((mode) => mode.value === saved) ? (saved as GenerationMode) : 'Auto';
+};
 
 const unwrap = <T,>(response: unknown): T => {
   const value = response as { data?: unknown };
@@ -80,64 +98,122 @@ export default function NoteDetail() {
   const [activeTool, setActiveTool] = useState<ActiveTool | null>(null);
   const [aiLoading, setAiLoading] = useState<ActiveTool | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [aiNotice, setAiNotice] = useState<string | null>(null);
+  const [generationMode, setGenerationMode] = useState<GenerationMode>(() => readGenerationModePreference());
   const [summary, setSummary] = useState('');
   const [studyTips, setStudyTips] = useState('');
   const [flashcards, setFlashcards] = useState<FlashcardResult[]>([]);
+  const [postUploadAction, setPostUploadAction] = useState<'extract' | 'analyze' | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
+  const loadNote = useCallback(async () => {
+    if (!id) {
+      return;
+    }
 
-    const loadNote = async () => {
-      if (!id) {
-        return;
-      }
+    setIsLoading(true);
+    setMessage(null);
 
-      setIsLoading(true);
-      setMessage(null);
+    try {
+      const response = await apiClient.get(`/api/notes/${id}`);
+      const loadedNote = unwrap<Note>(response);
 
-      try {
-        const response = await apiClient.get(`/api/notes/${id}`);
-        const loadedNote = unwrap<Note>(response);
-
-        if (isMounted) {
-          setNote(loadedNote);
-          setDraftTitle(loadedNote.title);
-          setDraftContent(loadedNote.content);
-        }
-      } catch {
-        if (isMounted) {
-          setNote(null);
-          setMessage('Unable to load this note.');
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    void loadNote();
-
-    return () => {
-      isMounted = false;
-    };
+      setNote(loadedNote);
+      setDraftTitle(loadedNote.title);
+      setDraftContent(loadedNote.content);
+    } catch {
+      setNote(null);
+      setMessage('Unable to load this note.');
+    } finally {
+      setIsLoading(false);
+    }
   }, [id]);
 
-  const isFileOnlyPdf = useMemo(() => note?.content?.trim() === FILE_ONLY_PDF_CONTENT, [note?.content]);
+  useEffect(() => {
+    void loadNote();
+  }, [loadNote]);
+
+  const isFileOnlyPdf = useMemo(() => {
+    const content = note?.content?.trim() ?? '';
+    return (
+      content === FILE_ONLY_PDF_CONTENT ||
+      content.toLowerCase().includes('uploaded without text extraction')
+    );
+  }, [note?.content]);
   const hasContent = useMemo(() => Boolean(note?.content?.trim()), [note?.content]);
   const hasUsableAiContent = hasContent && !isFileOnlyPdf;
   const attachments = note?.attachments ?? [];
+  const canRecoverAttachmentText = !hasUsableAiContent && attachments.length > 0;
   const generatedFlashcards = flashcards.filter((card) => card.front || card.question || card.back || card.answer);
+
+  const handleGenerationModeChange = (mode: GenerationMode) => {
+    setGenerationMode(mode);
+    window.localStorage.setItem(NOTE_DETAIL_GENERATION_MODE_KEY, mode);
+  };
+
+  const captureGenerationNotice = (value: GenerationMetadata) => {
+    const cacheNotice = value.fromCache ? ' Served from cache.' : '';
+    setAiNotice(value.notice ? `${value.notice}${cacheNotice}` : value.fromCache ? 'Served from cache.' : null);
+  };
+
+  const handleExtractAttachmentText = async () => {
+    if (!note) {
+      return;
+    }
+
+    try {
+      setPostUploadAction('extract');
+      setAiError(null);
+      const result = await extractAttachmentText(note.id);
+      await loadNote();
+      setMessage(result.warning ?? result.message);
+    } catch (error) {
+      const apiError = error as { response?: { data?: { message?: string; errors?: string[] } }; message?: string };
+      setAiError(
+        apiError.response?.data?.message ??
+          apiError.response?.data?.errors?.[0] ??
+          apiError.message ??
+          'Unable to extract text from this attachment.'
+      );
+    } finally {
+      setPostUploadAction(null);
+    }
+  };
+
+  const handleAnalyzeExisting = async () => {
+    if (!note) {
+      return;
+    }
+
+    try {
+      setPostUploadAction('analyze');
+      setAiError(null);
+      const result = await analyzeExistingNote(note.id);
+      await loadNote();
+      setMessage(result.warning ?? result.message);
+    } catch (error) {
+      const apiError = error as { response?: { data?: { message?: string; errors?: string[] } }; message?: string };
+      setAiError(
+        apiError.response?.data?.message ??
+          apiError.response?.data?.errors?.[0] ??
+          apiError.message ??
+          'Unable to analyze the saved attachment.'
+      );
+    } finally {
+      setPostUploadAction(null);
+    }
+  };
 
   const runAiAction = async (tool: ActiveTool, action: () => Promise<void>) => {
     if (!note || !hasUsableAiContent) {
       setActiveTool(tool);
       setAiError(isFileOnlyPdf ? AI_UNAVAILABLE_MESSAGE : 'This note needs text content before AI actions can run.');
+      setAiNotice(null);
       return;
     }
 
     setActiveTool(tool);
     setAiError(null);
+    setAiNotice(null);
     setAiLoading(tool);
 
     try {
@@ -157,20 +233,26 @@ export default function NoteDetail() {
 
   const handleGenerateSummary = () =>
     runAiAction('summary', async () => {
-      const result = await summarizeNote({ noteId: note!.id, content: note!.content });
-      setSummary(normalizeText(unwrap(result)));
+      const result = await summarizeNote({ noteId: note!.id, content: note!.content, generationMode });
+      const data = unwrap<GenerationMetadata>(result);
+      setSummary(normalizeText(data));
+      captureGenerationNotice(data);
     });
 
   const handleGenerateFlashcards = () =>
     runAiAction('flashcards', async () => {
-      const result = await generateFlashcards({ noteId: note!.id, content: note!.content });
-      setFlashcards(normalizeFlashcards(unwrap(result)));
+      const result = await generateFlashcards({ noteId: note!.id, content: note!.content, generationMode });
+      const data = unwrap<GenerationMetadata>(result);
+      setFlashcards(normalizeFlashcards(data));
+      captureGenerationNotice(data);
     });
 
   const handleGenerateStudyTips = () =>
     runAiAction('tips', async () => {
-      const result = await getStudyTips({ topic: `${note!.title}\n\n${note!.content}` });
-      setStudyTips(normalizeText(unwrap(result)));
+      const result = await getStudyTips({ topic: `${note!.title}\n\n${note!.content}`, generationMode });
+      const data = unwrap<GenerationMetadata>(result);
+      setStudyTips(normalizeText(data));
+      captureGenerationNotice(data);
     });
 
   const handleGenerateQuiz = () =>
@@ -365,7 +447,43 @@ export default function NoteDetail() {
               Ask AI Tutor - Coming soon
             </AppButton>
 
-            {isFileOnlyPdf && <div className="alert alert-warning">{AI_UNAVAILABLE_MESSAGE}</div>}
+            <div className="generation-mode-selector" aria-label="Generation mode">
+              {generationModes.map((mode) => (
+                <button
+                  key={mode.value}
+                  type="button"
+                  className={`ui-button ${generationMode === mode.value ? 'ui-button-primary' : 'ui-button-ghost'}`}
+                  onClick={() => handleGenerationModeChange(mode.value)}
+                  disabled={aiLoading !== null}
+                  aria-pressed={generationMode === mode.value}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+
+            {canRecoverAttachmentText && (
+              <div className="alert alert-warning">
+                <p className="mb-3">{AI_UNAVAILABLE_MESSAGE}</p>
+                <div className="cluster">
+                  <AppButton
+                    type="button"
+                    variant="secondary"
+                    onClick={() => void handleExtractAttachmentText()}
+                    disabled={postUploadAction !== null}
+                  >
+                    {postUploadAction === 'extract' ? 'Extracting...' : 'Extract Text'}
+                  </AppButton>
+                  <AppButton
+                    type="button"
+                    onClick={() => void handleAnalyzeExisting()}
+                    disabled={postUploadAction !== null}
+                  >
+                    {postUploadAction === 'analyze' ? 'Analyzing...' : 'Analyze Existing File'}
+                  </AppButton>
+                </div>
+              </div>
+            )}
 
             <div className="ai-action-list">
               <AppButton type="button" variant="secondary" onClick={handleGenerateSummary} disabled={aiLoading !== null || !hasUsableAiContent}>
@@ -419,6 +537,7 @@ export default function NoteDetail() {
         <Card className="stack">
           <h2>Active AI Tool</h2>
           {aiError && <div className="alert alert-danger">{aiError}</div>}
+          {aiNotice && !aiError && <div className="alert alert-info">{aiNotice}</div>}
           {!activeTool && <p className="muted">Choose an AI action from the analysis panel.</p>}
           {activeTool === 'summary' && !aiError && <p className="ai-output-text">{summary || 'Summary will appear here.'}</p>}
           {activeTool === 'tips' && !aiError && <p className="ai-output-text">{studyTips || 'Study tips will appear here.'}</p>}
